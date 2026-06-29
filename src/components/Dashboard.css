@@ -1,0 +1,29 @@
+.dashboard {
+  max-width: 900px;
+
+  margin: 50px auto;
+
+  padding: 30px;
+}
+
+.dashboard h1 {
+  margin-bottom: 30px;
+
+  color: #1f2937;
+}
+
+.dashboard h2 {
+  margin-bottom: 20px;
+}
+
+.card {
+  background: white;
+
+  border-radius: 12px;
+
+  padding: 20px;
+
+  margin-bottom: 20px;
+
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
