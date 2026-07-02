@@ -1,8 +1,8 @@
 function Senha({ onChange }) {
   return (
-    <div>
+    <div className="login-field">
       <label>Senha</label>
-      <input type="password" onChange={onChange}></input>
+      <input type="password" onChange={onChange} placeholder="Digite sua senha" />
     </div>
   );
 }

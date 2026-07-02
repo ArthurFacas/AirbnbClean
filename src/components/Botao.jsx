@@ -1,7 +1,9 @@
-function Botao({ onClick }) {
+import { useNavigate } from "react-router-dom";
+
+function Botao({ texto, onClick }) {
   return (
     <div>
-      <button onClick={onClick}>Entrar</button>
+      <button onClick={onClick}>{texto}</button>
     </div>
   );
 }

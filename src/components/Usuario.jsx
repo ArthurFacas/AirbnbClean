@@ -1,8 +1,8 @@
 function Usuario({ onChange }) {
   return (
-    <div>
+    <div className="login-field">
       <label>Usuario</label>
-      <input onChange={onChange}></input>
+      <input type="text" onChange={onChange} placeholder="Digite seu usuario" />
     </div>
   );
 }
