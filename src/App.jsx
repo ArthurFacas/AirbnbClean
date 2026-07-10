@@ -284,6 +284,29 @@ function App() {
         }
       />
       <Route
+        path="/prestador-preview/:prestadorId"
+        element={
+          usuarioLogado && bancoCarregado ? (
+            <PortalPrestador
+              acessoMaster
+              funcionarios={funcionarios}
+              onConcluirTarefa={concluirTarefa}
+              tarefas={tarefas}
+            />
+          ) : usuarioLogado ? (
+            <div className="provider-page">
+              <div className="provider-shell">
+                <div className="provider-empty">
+                  <p>Carregando acesso do prestador...</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
         path="/dashboard"
         element={
           usuarioLogado ? (

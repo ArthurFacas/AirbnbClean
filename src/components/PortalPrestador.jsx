@@ -51,6 +51,48 @@ function chaveSessaoPrestador(prestadorId) {
   return `cleanhost:prestador:${prestadorId}`;
 }
 
+function obterSessaoPrestador(prestadorId) {
+  const chave = chaveSessaoPrestador(prestadorId);
+
+  try {
+    const sessaoLocal = localStorage.getItem(chave);
+    const sessaoAntiga = sessionStorage.getItem(chave);
+    const sessao = sessaoLocal || sessaoAntiga;
+
+    if (sessaoAntiga && !sessaoLocal) {
+      localStorage.setItem(chave, sessaoAntiga);
+      sessionStorage.removeItem(chave);
+    }
+
+    return sessao ? JSON.parse(sessao) : null;
+  } catch {
+    return null;
+  }
+}
+
+function salvarSessaoPrestador(prestadorId, sessao) {
+  const chave = chaveSessaoPrestador(prestadorId);
+
+  try {
+    localStorage.setItem(chave, JSON.stringify(sessao));
+    sessionStorage.removeItem(chave);
+  } catch {
+    sessionStorage.setItem(chave, JSON.stringify(sessao));
+  }
+}
+
+function removerSessaoPrestador(prestadorId) {
+  const chave = chaveSessaoPrestador(prestadorId);
+
+  try {
+    localStorage.removeItem(chave);
+  } catch {
+    // localStorage pode estar indisponivel em alguns navegadores privados.
+  }
+
+  sessionStorage.removeItem(chave);
+}
+
 function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
   const [modo, setModo] = useState("entrar");
   const [email, setEmail] = useState(prestador?.email || "");
@@ -132,10 +174,7 @@ function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
         token: dados.token,
       };
 
-      sessionStorage.setItem(
-        chaveSessaoPrestador(prestadorId),
-        JSON.stringify(sessaoPrestador),
-      );
+      salvarSessaoPrestador(prestadorId, sessaoPrestador);
       onEntrar(sessaoPrestador);
     } catch (erroAtual) {
       setErro(erroAtual.message);
@@ -227,17 +266,17 @@ function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
   );
 }
 
-function PortalPrestador({ funcionarios, onConcluirTarefa, tarefas }) {
+function PortalPrestador({
+  acessoMaster = false,
+  funcionarios,
+  onConcluirTarefa,
+  tarefas,
+}) {
   const { prestadorId } = useParams();
   const navigate = useNavigate();
   const [abaAtiva, setAbaAtiva] = useState("hoje");
   const [prestadorLogado, setPrestadorLogado] = useState(() => {
-    try {
-      const sessao = sessionStorage.getItem(chaveSessaoPrestador(prestadorId));
-      return sessao ? JSON.parse(sessao) : null;
-    } catch {
-      return null;
-    }
+    return obterSessaoPrestador(prestadorId);
   });
   const [prestadorRemoto, setPrestadorRemoto] = useState(null);
   const [tarefasRemotas, setTarefasRemotas] = useState([]);
@@ -248,14 +287,14 @@ function PortalPrestador({ funcionarios, onConcluirTarefa, tarefas }) {
     (funcionario) => String(funcionario.id) === String(prestadorId),
   );
   const prestador = prestadorLocal || prestadorRemoto;
-  const tarefasBase = tarefas.length ? tarefas : tarefasRemotas;
+  const tarefasBase = acessoMaster || tarefas.length ? tarefas : tarefasRemotas;
   const tokenPrestador = prestadorLogado?.token || "";
 
   const carregarPortal = useCallback(
     async function carregarPortal({ silencioso = false } = {}) {
       await Promise.resolve();
 
-      if (!tokenPrestador) {
+      if (acessoMaster || !tokenPrestador) {
         setCarregandoPortal(false);
         return;
       }
@@ -284,7 +323,7 @@ function PortalPrestador({ funcionarios, onConcluirTarefa, tarefas }) {
       } catch (erroAtual) {
         setErroPortal(erroAtual.message);
         if (erroAtual.message.includes("autenticado")) {
-          sessionStorage.removeItem(chaveSessaoPrestador(prestadorId));
+          removerSessaoPrestador(prestadorId);
           setPrestadorLogado(null);
         }
       } finally {
@@ -292,7 +331,7 @@ function PortalPrestador({ funcionarios, onConcluirTarefa, tarefas }) {
         setAtualizandoPortal(false);
       }
     },
-    [prestadorId, tokenPrestador],
+    [acessoMaster, prestadorId, tokenPrestador],
   );
 
   useEffect(() => {
@@ -304,7 +343,7 @@ function PortalPrestador({ funcionarios, onConcluirTarefa, tarefas }) {
   }, [carregarPortal]);
 
   useEffect(() => {
-    if (!tokenPrestador) {
+    if (acessoMaster || !tokenPrestador) {
       return undefined;
     }
 
@@ -313,7 +352,7 @@ function PortalPrestador({ funcionarios, onConcluirTarefa, tarefas }) {
     }, 8000);
 
     return () => window.clearInterval(intervalo);
-  }, [carregarPortal, tokenPrestador]);
+  }, [acessoMaster, carregarPortal, tokenPrestador]);
 
   const tarefasDoPrestador = useMemo(
     () =>
@@ -346,6 +385,11 @@ function PortalPrestador({ funcionarios, onConcluirTarefa, tarefas }) {
     [dataHoje, tarefasDoPrestador],
   );
   async function concluirTarefaPrestador(tarefaId) {
+    if (acessoMaster) {
+      onConcluirTarefa(tarefaId);
+      return;
+    }
+
     const resposta = await fetch("/api/provider/complete", {
       method: "POST",
       headers: {
@@ -416,7 +460,7 @@ function PortalPrestador({ funcionarios, onConcluirTarefa, tarefas }) {
     );
   }
 
-  if (String(prestadorLogado?.id) !== String(prestadorId)) {
+  if (!acessoMaster && String(prestadorLogado?.id) !== String(prestadorId)) {
     return (
       <PrestadorAcesso
         prestador={prestador}
@@ -461,7 +505,11 @@ function PortalPrestador({ funcionarios, onConcluirTarefa, tarefas }) {
           <div>
             <span>CleanHost</span>
             <h1>Ola, {prestador.nome}</h1>
-            <p>Estas sao as tarefas designadas para voce.</p>
+            <p>
+              {acessoMaster
+                ? "Visualizacao do master, sem login do prestador."
+                : "Estas sao as tarefas designadas para voce."}
+            </p>
           </div>
           <div className="provider-header-stats">
             <div>
@@ -484,16 +532,26 @@ function PortalPrestador({ funcionarios, onConcluirTarefa, tarefas }) {
             >
               {atualizandoPortal ? "Atualizando..." : "Atualizar"}
             </button>
-            <button
-              className="provider-logout"
-              type="button"
-              onClick={() => {
-                sessionStorage.removeItem(chaveSessaoPrestador(prestadorId));
-                setPrestadorLogado(null);
-              }}
-            >
-              Sair
-            </button>
+            {acessoMaster ? (
+              <button
+                className="provider-logout"
+                type="button"
+                onClick={() => navigate("/dashboard/lista-funcionarios")}
+              >
+                Voltar
+              </button>
+            ) : (
+              <button
+                className="provider-logout"
+                type="button"
+                onClick={() => {
+                  removerSessaoPrestador(prestadorId);
+                  setPrestadorLogado(null);
+                }}
+              >
+                Sair
+              </button>
+            )}
           </div>
         </header>
 

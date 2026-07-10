@@ -8,8 +8,8 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3001);
-const DATA_DIR = path.join(__dirname, "data");
-const DB_FILE = path.join(DATA_DIR, "database.sqlite");
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+const DB_FILE = process.env.DATABASE_FILE || path.join(DATA_DIR, "database.sqlite");
 const DIST_DIR = path.join(__dirname, "dist");
 
 const tipos = {
@@ -218,6 +218,13 @@ async function salvarEstado(estado, ownerId) {
   banco.exec("BEGIN");
 
   try {
+    const statusTarefasPersistidas = new Map(
+      banco
+        .prepare("SELECT id, status FROM tarefas WHERE owner_id = ?")
+        .all(donoId)
+        .map((tarefa) => [String(tarefa.id), tarefa.status]),
+    );
+
     banco.prepare("DELETE FROM tarefas WHERE owner_id = ?").run(donoId);
     banco.prepare("DELETE FROM apartamentos WHERE owner_id = ?").run(donoId);
     banco.prepare("DELETE FROM funcionarios WHERE owner_id = ?").run(donoId);
@@ -281,6 +288,16 @@ async function salvarEstado(estado, ownerId) {
     });
 
     estadoNormalizado.tarefas.forEach((tarefa) => {
+      const statusPersistido = statusTarefasPersistidas.get(String(tarefa.id));
+      const statusFinal =
+        statusPersistido === "Concluida" && tarefa.status !== "Concluida"
+          ? "Concluida"
+          : tarefa.status || "Pendente";
+      const tarefaParaSalvar = {
+        ...tarefa,
+        status: statusFinal,
+      };
+
       inserirTarefa.run(
         Number(tarefa.id) || Date.now(),
         donoId,
@@ -291,12 +308,12 @@ async function salvarEstado(estado, ownerId) {
         tarefa.checkin || "",
         tarefa.checkout || "",
         tarefa.horaCheckout || "11:00",
-        tarefa.status || "Pendente",
+        statusFinal,
         String(tarefa.funcionarioId ?? "").trim(),
         tarefa.origem || "",
         tarefa.prioridade ? 1 : 0,
         tarefa.motivoPrioridade || "",
-        JSON.stringify(tarefa),
+        JSON.stringify(tarefaParaSalvar),
       );
     });
 

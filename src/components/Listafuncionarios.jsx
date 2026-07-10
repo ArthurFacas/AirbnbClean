@@ -73,7 +73,7 @@ function Listafuncionarios({ funcionarios, onExcluir }) {
             <div className="provider-actions">
               <a
                 className="secondary-action"
-                href={`#/prestador/${funcionario.id}`}
+                href={`#/prestador-preview/${funcionario.id}`}
                 target="_blank"
                 rel="noopener noreferrer"
               >
