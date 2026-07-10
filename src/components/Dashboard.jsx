@@ -26,56 +26,102 @@ function DashboardHome({
   funcionarios,
   usuario,
   onAtribuirFuncionario,
+  onAtualizarDados,
+  onAtualizarTarefa,
   tarefasPendentes,
 }) {
   const navigate = useNavigate();
   const tarefasOrdenadas = [...tarefasPendentes].sort(
     compararTarefasPorCheckout,
   );
+  const inicialUsuario = (usuario?.nome || "U").trim().slice(0, 1).toUpperCase();
 
   return (
-    <>
-      <h1>Bem-vindo, {usuario?.nome || "usuario"}</h1>
-      <p>Resumo geral da operacao.</p>
+    <div className="dashboard-home">
+      <header className="dashboard-topbar">
+        <div>
+          <span className="dashboard-eyebrow">Painel operacional</span>
+          <h1>Bem-vindo, {usuario?.nome || "usuario"}</h1>
+          <p>Resumo geral da operacao e tarefas em aberto.</p>
+        </div>
+
+        <div className="dashboard-profile" aria-label="Perfil do usuario">
+          <span>{inicialUsuario}</span>
+          <div>
+            <strong>{usuario?.nome || "Usuario"}</strong>
+            <small>Master</small>
+          </div>
+        </div>
+      </header>
 
       <section className="cards-resumo">
         <div className="resumo-card">
-          <p>Apartamentos</p>
-          <h2>{apartamentoTotal}</h2>
+          <span className="summary-icon" aria-hidden="true">
+            AP
+          </span>
+          <div>
+            <p>Apartamentos</p>
+            <h2>{apartamentoTotal}</h2>
+          </div>
         </div>
 
         <div className="resumo-card">
-          <p>Prestadores de servico</p>
-          <h2>{funcionarioTotal}</h2>
+          <span className="summary-icon" aria-hidden="true">
+            PS
+          </span>
+          <div>
+            <p>Prestadores de servico</p>
+            <h2>{funcionarioTotal}</h2>
+          </div>
         </div>
 
         <div className="resumo-card destaque">
-          <p>Tarefas pendentes</p>
-          <h2>{tarefasPendentes.length}</h2>
+          <span className="summary-icon" aria-hidden="true">
+            TP
+          </span>
+          <div>
+            <p>Tarefas pendentes</p>
+            <h2>{tarefasPendentes.length}</h2>
+          </div>
         </div>
       </section>
 
       <section className="tarefas-pendentes">
         <div className="section-title-row">
-          <h2>Tarefas pendentes</h2>
-          <button onClick={() => navigate("/dashboard/tarefas")}>
-            Ver tarefas
-          </button>
+          <div>
+            <span className="section-kicker">Operacao</span>
+            <h2>Tarefas pendentes</h2>
+          </div>
+          <div>
+            <button type="button" onClick={onAtualizarDados}>
+              Atualizar
+            </button>
+            <button type="button" onClick={() => navigate("/dashboard/tarefas")}>
+              Ver tarefas
+            </button>
+          </div>
         </div>
 
-        <div className="list-grid">
-          {tarefasOrdenadas.map((tarefa) => (
-            <TarefaCard
-              key={tarefa.id}
-              funcionarios={funcionarios}
-              onAtribuirFuncionario={onAtribuirFuncionario}
-              selectId={`dashboard-funcionario-${tarefa.id}`}
-              tarefa={tarefa}
-            />
-          ))}
-        </div>
+        {tarefasOrdenadas.length ? (
+          <div className="list-grid">
+            {tarefasOrdenadas.map((tarefa) => (
+              <TarefaCard
+                key={tarefa.id}
+                funcionarios={funcionarios}
+                onAtribuirFuncionario={onAtribuirFuncionario}
+                onAtualizarTarefa={onAtualizarTarefa}
+                selectId={`dashboard-funcionario-${tarefa.id}`}
+                tarefa={tarefa}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            Nenhuma tarefa pendente encontrada.
+          </div>
+        )}
       </section>
-    </>
+    </div>
   );
 }
 
@@ -86,26 +132,55 @@ function Dashboard({
   usuario,
   onSair,
   onAtribuirFuncionario,
+  onAtualizarDados,
+  onAtualizarTarefa,
   tarefasPendentes,
 }) {
   const location = useLocation();
   const navigate = useNavigate();
   const isDashboardHome = location.pathname === "/dashboard";
+  const navItems = [
+    { path: "/dashboard", label: "Dashboard", icon: "DB" },
+    {
+      path: "/dashboard/lista-funcionarios",
+      label: "Prestadores de servico",
+      icon: "PS",
+    },
+    {
+      path: "/dashboard/lista-apartamentos",
+      label: "Apartamentos",
+      icon: "AP",
+    },
+    { path: "/dashboard/tarefas", label: "Tarefas", icon: "TF" },
+  ];
+
+  function rotaAtiva(path) {
+    return path === "/dashboard"
+      ? location.pathname === path
+      : location.pathname.startsWith(path);
+  }
 
   return (
     <div className="dashboard-page">
       <aside className="sidebar">
-        <h2>CleanHost</h2>
+        <div className="sidebar-brand">
+          <span aria-hidden="true">CH</span>
+          <h2>CleanHost</h2>
+        </div>
 
-        <nav>
-          <button onClick={() => navigate("/dashboard")}>Dashboard</button>
-          <button onClick={() => navigate("/dashboard/lista-funcionarios")}>
-            Prestadores de servico
-          </button>
-          <button onClick={() => navigate("/dashboard/lista-apartamentos")}>
-            Apartamentos
-          </button>
-          <button onClick={() => navigate("/dashboard/tarefas")}>Tarefas</button>
+        <nav aria-label="Navegacao principal">
+          {navItems.map((item) => (
+            <button
+              aria-current={rotaAtiva(item.path) ? "page" : undefined}
+              className={rotaAtiva(item.path) ? "active" : ""}
+              key={item.path}
+              onClick={() => navigate(item.path)}
+              type="button"
+            >
+              <span aria-hidden="true">{item.icon}</span>
+              {item.label}
+            </button>
+          ))}
         </nav>
 
         <button
@@ -114,7 +189,9 @@ function Dashboard({
             onSair();
             navigate("/");
           }}
+          type="button"
         >
+          <span aria-hidden="true">SA</span>
           Sair
         </button>
       </aside>
@@ -127,6 +204,8 @@ function Dashboard({
             funcionarios={funcionarios}
             usuario={usuario}
             onAtribuirFuncionario={onAtribuirFuncionario}
+            onAtualizarDados={onAtualizarDados}
+            onAtualizarTarefa={onAtualizarTarefa}
             tarefasPendentes={tarefasPendentes}
           />
         ) : (

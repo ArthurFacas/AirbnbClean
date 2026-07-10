@@ -30,6 +30,17 @@
   }
 }
 
+* {
+  box-sizing: border-box;
+}
+
+html {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --text: #9ca3af;
@@ -52,14 +63,17 @@
 
 body {
   margin: 0;
+  width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  text-align: left;
+  border-inline: 0;
   min-height: 100svh;
   display: flex;
   flex-direction: column;

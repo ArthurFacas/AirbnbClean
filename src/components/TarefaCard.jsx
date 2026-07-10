@@ -16,6 +16,27 @@ function formatarData(data) {
     : dataNormalizada.toLocaleDateString("pt-BR");
 }
 
+function formatarHorario(horario) {
+  const texto = String(horario || "11:00").trim();
+  const resultado = texto.match(/^(\d{1,2}):(\d{2})/);
+
+  if (!resultado) {
+    return texto || "11:00";
+  }
+
+  return `${resultado[1].padStart(2, "0")}:${resultado[2]}`;
+}
+
+function formatarDescricao(descricao) {
+  const texto = String(descricao || "").trim();
+
+  if (!texto || /not available/i.test(texto)) {
+    return "Informacao indisponivel";
+  }
+
+  return texto;
+}
+
 function encontrarFuncionario(funcionarios, funcionarioId) {
   return funcionarios.find(
     (funcionario) => String(funcionario.id) === String(funcionarioId),
@@ -37,7 +58,13 @@ function funcionarioNoMesmoBairro(funcionario, tarefa) {
   return Boolean(bairroFuncionario && bairroFuncionario === bairroApartamento);
 }
 
-function TarefaCard({ tarefa, funcionarios, onAtribuirFuncionario, selectId }) {
+function TarefaCard({
+  tarefa,
+  funcionarios,
+  onAtribuirFuncionario,
+  onAtualizarTarefa,
+  selectId,
+}) {
   const funcionario = encontrarFuncionario(funcionarios, tarefa.funcionarioId);
   const urgencia = calcularUrgencia(tarefa);
   const [editando, setEditando] = useState(false);
@@ -55,6 +82,8 @@ function TarefaCard({ tarefa, funcionarios, onAtribuirFuncionario, selectId }) {
   const funcionarioPerto = funcionario
     ? funcionarioNoMesmoBairro(funcionario, tarefa)
     : false;
+  const responsavel = funcionario?.nome || "Nao atribuido";
+  const observacao = String(tarefa.observacaoPrestador || "").trim();
 
   function editarFuncionario() {
     alert("Selecione outro prestador de servico para editar esta tarefa.");
@@ -69,28 +98,27 @@ function TarefaCard({ tarefa, funcionarios, onAtribuirFuncionario, selectId }) {
   return (
     <div className={`info-card task-card ${urgencia.classe}`}>
       <div className="task-card-top">
-        <div className="task-card-flags">
-          <span className="status-chip">Pendente</span>
-          {funcionario && <span className="assigned-chip">Atribuido</span>}
-          {tarefa.prioridade && (
-            <span className="priority-chip" title={tarefa.motivoPrioridade}>
-              Prioridade
-            </span>
-          )}
-        </div>
+        <span className="status-chip">Pendente</span>
         <span
           className={`urgency-pill ${urgencia.classe}`}
           aria-label={urgencia.label}
           title={urgencia.label}
         >
           <span className="urgency-dot"></span>
+          <strong>
+            {tarefa.prioridade
+              ? "Urgente"
+              : urgencia.chave === "amarela"
+                ? "Atencao"
+                : "Normal"}
+          </strong>
         </span>
       </div>
 
       <div className="task-card-main">
         <span className="task-apartment-label">Apartamento</span>
         <h3>{tarefa.apartamento}</h3>
-        <p>{tarefa.descricao}</p>
+        <p>{formatarDescricao(tarefa.descricao)}</p>
       </div>
 
       <div className="task-checkout-row">
@@ -100,8 +128,16 @@ function TarefaCard({ tarefa, funcionarios, onAtribuirFuncionario, selectId }) {
         </div>
         <div>
           <span>Horario</span>
-          <strong>{tarefa.horaCheckout}</strong>
+          <strong>{formatarHorario(tarefa.horaCheckout)}</strong>
         </div>
+      </div>
+
+      <div className="task-responsible-box">
+        <span>Responsavel</span>
+        <strong className={funcionario ? "" : "unassigned"}>{responsavel}</strong>
+        {funcionarioPerto && (
+          <small>Mais perto deste apartamento</small>
+        )}
       </div>
 
       {deveMostrarSelecao ? (
@@ -135,13 +171,36 @@ function TarefaCard({ tarefa, funcionarios, onAtribuirFuncionario, selectId }) {
         </div>
       ) : (
         <div className="assigned-box">
-          <p className="assigned-text">Responsavel: {funcionario.nome}</p>
-          {funcionarioPerto && (
-            <p className="distance-hint">Mais perto deste apartamento</p>
-          )}
           <button className="secondary-action" onClick={editarFuncionario}>
             Editar
           </button>
+        </div>
+      )}
+
+      <div className={`task-observation-box ${observacao ? "has-note" : ""}`}>
+        <div>
+          <span>Observacao</span>
+          {observacao && <strong>Para o prestador</strong>}
+        </div>
+        <p>{observacao || "Sem observacoes"}</p>
+      </div>
+
+      {onAtualizarTarefa && (
+        <div className="task-note-control">
+          <label htmlFor={`observacao-${tarefa.id}`}>
+            Observacao para o prestador
+          </label>
+          <textarea
+            id={`observacao-${tarefa.id}`}
+            value={tarefa.observacaoPrestador || ""}
+            onChange={(event) =>
+              onAtualizarTarefa(tarefa.id, {
+                observacaoPrestador: event.target.value,
+              })
+            }
+            placeholder="Ex: conferir enxoval, levar produto especifico..."
+            rows={3}
+          />
         </div>
       )}
     </div>

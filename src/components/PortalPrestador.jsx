@@ -24,6 +24,28 @@ function obterHojeInput() {
   return `${ano}-${mes}-${dia}`;
 }
 
+function obterMesInput(data) {
+  const dataBase = data ? new Date(`${data}T00:00:00`) : new Date();
+
+  if (Number.isNaN(dataBase.getTime())) {
+    return obterHojeInput().slice(0, 7);
+  }
+
+  const ano = dataBase.getFullYear();
+  const mes = String(dataBase.getMonth() + 1).padStart(2, "0");
+
+  return `${ano}-${mes}`;
+}
+
+function formatarMes(dataMes) {
+  const data = new Date(`${dataMes}-01T00:00:00`);
+
+  return data.toLocaleDateString("pt-BR", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
 function obterDataCheckout(tarefa) {
   const valor = tarefa.checkout ?? tarefa.dataCheckout ?? tarefa.data;
 
@@ -41,10 +63,69 @@ function obterDataCheckout(tarefa) {
   return Number.isNaN(data.getTime()) ? "" : data.toISOString().slice(0, 10);
 }
 
+function obterDataConclusao(tarefa) {
+  const valor = tarefa.concluidaEm || tarefa.concluida_em;
+
+  if (!valor) {
+    return obterDataCheckout(tarefa);
+  }
+
+  const texto = String(valor);
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(texto)) {
+    return texto.slice(0, 10);
+  }
+
+  const data = new Date(texto);
+  return Number.isNaN(data.getTime()) ? obterDataCheckout(tarefa) : data.toISOString().slice(0, 10);
+}
+
 function compararTarefas(tarefaA, tarefaB) {
   return String(tarefaA.checkout || "").localeCompare(
     String(tarefaB.checkout || ""),
   );
+}
+
+function montarDiasDoMes(dataMes, tarefasPendentes, obterData = obterDataCheckout) {
+  const [ano, mes] = dataMes.split("-").map(Number);
+  const primeiroDia = new Date(ano, mes - 1, 1);
+  const ultimoDia = new Date(ano, mes, 0);
+  const diasAntes = primeiroDia.getDay();
+  const totalDias = ultimoDia.getDate();
+  const tarefasPorData = tarefasPendentes.reduce((mapa, tarefa) => {
+    const data = obterData(tarefa);
+
+    if (!data) {
+      return mapa;
+    }
+
+    if (!mapa[data]) {
+      mapa[data] = [];
+    }
+
+    mapa[data].push(tarefa);
+    return mapa;
+  }, {});
+  const dias = [];
+
+  for (let index = 0; index < diasAntes; index += 1) {
+    dias.push(null);
+  }
+
+  for (let dia = 1; dia <= totalDias; dia += 1) {
+    const data = `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(
+      2,
+      "0",
+    )}`;
+
+    dias.push({
+      data,
+      dia,
+      tarefas: tarefasPorData[data] || [],
+    });
+  }
+
+  return dias;
 }
 
 function chaveSessaoPrestador(prestadorId) {
@@ -275,6 +356,14 @@ function PortalPrestador({
   const { prestadorId } = useParams();
   const navigate = useNavigate();
   const [abaAtiva, setAbaAtiva] = useState("hoje");
+  const [mesCalendario, setMesCalendario] = useState(() =>
+    obterMesInput(obterHojeInput()),
+  );
+  const [mesCalendarioConcluidas, setMesCalendarioConcluidas] = useState(() =>
+    obterMesInput(obterHojeInput()),
+  );
+  const [dataSelecionada, setDataSelecionada] = useState("");
+  const [dataConcluidaSelecionada, setDataConcluidaSelecionada] = useState("");
   const [prestadorLogado, setPrestadorLogado] = useState(() => {
     return obterSessaoPrestador(prestadorId);
   });
@@ -342,18 +431,6 @@ function PortalPrestador({
     return () => window.clearTimeout(timeout);
   }, [carregarPortal]);
 
-  useEffect(() => {
-    if (acessoMaster || !tokenPrestador) {
-      return undefined;
-    }
-
-    const intervalo = window.setInterval(() => {
-      carregarPortal({ silencioso: true });
-    }, 8000);
-
-    return () => window.clearInterval(intervalo);
-  }, [acessoMaster, carregarPortal, tokenPrestador]);
-
   const tarefasDoPrestador = useMemo(
     () =>
       tarefasBase
@@ -384,6 +461,29 @@ function PortalPrestador({
       ),
     [dataHoje, tarefasDoPrestador],
   );
+  const diasDoCalendario = useMemo(
+    () => montarDiasDoMes(mesCalendario, tarefasDoPrestador),
+    [mesCalendario, tarefasDoPrestador],
+  );
+  const diasConcluidasDoCalendario = useMemo(
+    () =>
+      montarDiasDoMes(
+        mesCalendarioConcluidas,
+        tarefasConcluidas,
+        obterDataConclusao,
+      ),
+    [mesCalendarioConcluidas, tarefasConcluidas],
+  );
+  const tarefasDaDataSelecionada = dataSelecionada
+    ? tarefasDoPrestador.filter(
+        (tarefa) => obterDataCheckout(tarefa) === dataSelecionada,
+      )
+    : [];
+  const tarefasConcluidasDaDataSelecionada = dataConcluidaSelecionada
+    ? tarefasConcluidas.filter(
+        (tarefa) => obterDataConclusao(tarefa) === dataConcluidaSelecionada,
+      )
+    : [];
   async function concluirTarefaPrestador(tarefaId) {
     if (acessoMaster) {
       onConcluirTarefa(tarefaId);
@@ -410,7 +510,11 @@ function PortalPrestador({
     setTarefasRemotas((tarefasAtuais) =>
       tarefasAtuais.map((tarefa) =>
         String(tarefa.id) === String(tarefaId)
-          ? { ...tarefa, status: "Concluida" }
+          ? {
+              ...tarefa,
+              status: "Concluida",
+              concluidaEm: dados.tarefa?.concluidaEm || new Date().toISOString(),
+            }
           : tarefa,
       ),
     );
@@ -419,6 +523,12 @@ function PortalPrestador({
 
   function renderizarCardTarefa(tarefa, concluida = false) {
     const urgencia = calcularUrgencia(tarefa);
+    const responsavel =
+      prestador ||
+      funcionarios.find(
+        (funcionario) =>
+          String(funcionario.id) === String(tarefa.funcionarioId),
+      );
 
     return (
       <article
@@ -441,6 +551,20 @@ function PortalPrestador({
           </strong>
         </div>
         {tarefa.bairroApartamento && <small>{tarefa.bairroApartamento}</small>}
+        {tarefa.observacaoPrestador && (
+          <div className="provider-task-note">
+            <span>Observacao</span>
+            <p>{tarefa.observacaoPrestador}</p>
+          </div>
+        )}
+        {concluida && (
+          <div className="provider-task-done-by">
+            <span>Feita por</span>
+            <strong>{responsavel?.nome || "Prestador nao identificado"}</strong>
+            <span>Concluida em</span>
+            <strong>{formatarData(obterDataConclusao(tarefa))}</strong>
+          </div>
+        )}
         {!concluida && (
           <button
             className="provider-complete-button"
@@ -574,6 +698,14 @@ function PortalPrestador({
           </button>
           <button
             type="button"
+            className={abaAtiva === "calendario" ? "active" : ""}
+            onClick={() => setAbaAtiva("calendario")}
+          >
+            Calendario
+            <strong>{tarefasDoPrestador.length}</strong>
+          </button>
+          <button
+            type="button"
             className={abaAtiva === "concluidas" ? "active" : ""}
             onClick={() => setAbaAtiva("concluidas")}
           >
@@ -612,8 +744,163 @@ function PortalPrestador({
           </>
         )}
 
+        {abaAtiva === "calendario" && (
+          <section className="provider-calendar-panel">
+            <div className="provider-calendar-header">
+              <strong>{formatarMes(mesCalendario)}</strong>
+              <input
+                aria-label="Escolher mes"
+                type="month"
+                value={mesCalendario}
+                onChange={(event) => {
+                  setMesCalendario(event.target.value);
+                  setDataSelecionada("");
+                }}
+              />
+            </div>
+
+            <div className="provider-calendar-weekdays">
+              {["D", "S", "T", "Q", "Q", "S", "S"].map((dia, index) => (
+                <span key={`${dia}-${index}`}>{dia}</span>
+              ))}
+            </div>
+
+            <div className="provider-calendar-grid">
+              {diasDoCalendario.map((dia, index) =>
+                dia ? (
+                  <button
+                    key={dia.data}
+                    type="button"
+                    className={`provider-calendar-day ${
+                      dia.tarefas.length ? "has-tasks" : ""
+                    } ${dataSelecionada === dia.data ? "active" : ""}`}
+                    onClick={() => setDataSelecionada(dia.data)}
+                  >
+                    <span>{dia.dia}</span>
+                    {dia.tarefas.length > 0 && <strong>{dia.tarefas.length}</strong>}
+                  </button>
+                ) : (
+                  <div className="provider-calendar-day empty" key={`empty-${index}`} />
+                ),
+              )}
+            </div>
+
+            <div className="provider-calendar-results">
+              <div className="provider-calendar-results-header">
+                <strong>
+                  {dataSelecionada
+                    ? formatarData(dataSelecionada)
+                    : "Escolha uma data"}
+                </strong>
+                {dataSelecionada && (
+                  <span>{tarefasDaDataSelecionada.length} tarefa(s)</span>
+                )}
+              </div>
+
+              {dataSelecionada ? (
+                tarefasDaDataSelecionada.length ? (
+                  <div className="provider-task-list compact">
+                    {tarefasDaDataSelecionada.map((tarefa) =>
+                      renderizarCardTarefa(tarefa),
+                    )}
+                  </div>
+                ) : (
+                  <div className="provider-empty compact">
+                    <p>Nenhuma tarefa nessa data.</p>
+                  </div>
+                )
+              ) : (
+                <div className="provider-empty compact">
+                  <p>Toque em um dia marcado para ver as tarefas.</p>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
         {abaAtiva === "concluidas" && (
           <section className="provider-completed-section">
+            <div className="provider-calendar-panel">
+              <div className="provider-calendar-header">
+                <strong>{formatarMes(mesCalendarioConcluidas)}</strong>
+                <input
+                  aria-label="Escolher mes de concluidas"
+                  type="month"
+                  value={mesCalendarioConcluidas}
+                  onChange={(event) => {
+                    setMesCalendarioConcluidas(event.target.value);
+                    setDataConcluidaSelecionada("");
+                  }}
+                />
+              </div>
+
+              <div className="provider-calendar-weekdays">
+                {["D", "S", "T", "Q", "Q", "S", "S"].map((dia, index) => (
+                  <span key={`${dia}-${index}`}>{dia}</span>
+                ))}
+              </div>
+
+              <div className="provider-calendar-grid">
+                {diasConcluidasDoCalendario.map((dia, index) =>
+                  dia ? (
+                    <button
+                      key={dia.data}
+                      type="button"
+                      className={`provider-calendar-day ${
+                        dia.tarefas.length ? "has-tasks" : ""
+                      } ${
+                        dataConcluidaSelecionada === dia.data ? "active" : ""
+                      }`}
+                      onClick={() => setDataConcluidaSelecionada(dia.data)}
+                    >
+                      <span>{dia.dia}</span>
+                      {dia.tarefas.length > 0 && (
+                        <strong>{dia.tarefas.length}</strong>
+                      )}
+                    </button>
+                  ) : (
+                    <div
+                      className="provider-calendar-day empty"
+                      key={`done-empty-${index}`}
+                    />
+                  ),
+                )}
+              </div>
+
+              <div className="provider-calendar-results">
+                <div className="provider-calendar-results-header">
+                  <strong>
+                    {dataConcluidaSelecionada
+                      ? formatarData(dataConcluidaSelecionada)
+                      : "Escolha uma data concluida"}
+                  </strong>
+                  {dataConcluidaSelecionada && (
+                    <span>
+                      {tarefasConcluidasDaDataSelecionada.length} tarefa(s)
+                    </span>
+                  )}
+                </div>
+
+                {dataConcluidaSelecionada ? (
+                  tarefasConcluidasDaDataSelecionada.length ? (
+                    <div className="provider-task-list compact">
+                      {tarefasConcluidasDaDataSelecionada.map((tarefa) =>
+                        renderizarCardTarefa(tarefa, true),
+                      )}
+                    </div>
+                  ) : (
+                    <div className="provider-empty compact">
+                      <p>Nenhuma tarefa concluida nessa data.</p>
+                    </div>
+                  )
+                ) : (
+                  <div className="provider-empty compact">
+                    <p>Toque em um dia marcado para ver as concluidas.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {tarefasConcluidas.length > 0 ? (
               <div className="provider-task-list">
                 {tarefasConcluidas.map((tarefa) =>

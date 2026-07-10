@@ -72,6 +72,7 @@ async function garantirBanco() {
         origem TEXT,
         prioridade INTEGER NOT NULL DEFAULT 0,
         motivo_prioridade TEXT,
+        concluida_em TEXT,
         dados_json TEXT NOT NULL DEFAULT '{}'
       );
 
@@ -104,7 +105,9 @@ async function garantirBanco() {
     garantirColuna("funcionarios", "owner_id", "INTEGER");
     garantirColuna("apartamentos", "owner_id", "INTEGER");
     garantirColuna("tarefas", "owner_id", "INTEGER");
+    garantirColuna("tarefas", "concluida_em", "TEXT");
     atribuirDonoDadosLegados();
+    removerTarefasConcluidasExpiradas();
   }
 
   const totalFuncionarios = banco
@@ -153,6 +156,17 @@ function atribuirDonoDadosLegados() {
     .run(ownerId);
 }
 
+function removerTarefasConcluidasExpiradas() {
+  banco
+    .prepare(
+      `DELETE FROM tarefas
+       WHERE status = 'Concluida'
+         AND concluida_em IS NOT NULL
+         AND datetime(concluida_em) < datetime('now', '-1 year')`,
+    )
+    .run();
+}
+
 function normalizarOwnerId(valor) {
   const numero = Number(valor);
   return Number.isInteger(numero) && numero > 0 ? numero : null;
@@ -190,7 +204,7 @@ async function carregarEstado(ownerId) {
       .prepare(
         `SELECT id, apartamento_id, apartamento, bairro_apartamento, descricao,
                 checkin, checkout, hora_checkout, status, funcionario_id,
-                origem, prioridade, motivo_prioridade, dados_json
+                origem, prioridade, motivo_prioridade, concluida_em, dados_json
          FROM tarefas
          WHERE owner_id = ?
          ORDER BY checkout, apartamento`,
@@ -218,11 +232,11 @@ async function salvarEstado(estado, ownerId) {
   banco.exec("BEGIN");
 
   try {
-    const statusTarefasPersistidas = new Map(
+    const tarefasPersistidas = new Map(
       banco
-        .prepare("SELECT id, status FROM tarefas WHERE owner_id = ?")
+        .prepare("SELECT id, status, concluida_em FROM tarefas WHERE owner_id = ?")
         .all(donoId)
-        .map((tarefa) => [String(tarefa.id), tarefa.status]),
+        .map((tarefa) => [String(tarefa.id), tarefa]),
     );
 
     banco.prepare("DELETE FROM tarefas WHERE owner_id = ?").run(donoId);
@@ -244,9 +258,9 @@ async function salvarEstado(estado, ownerId) {
       INSERT INTO tarefas (
         id, owner_id, apartamento_id, apartamento, bairro_apartamento, descricao,
         checkin, checkout, hora_checkout, status, funcionario_id,
-        origem, prioridade, motivo_prioridade, dados_json
+        origem, prioridade, motivo_prioridade, concluida_em, dados_json
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const estadoNormalizado = normalizarEstadoPrestadorUnico({
@@ -288,14 +302,22 @@ async function salvarEstado(estado, ownerId) {
     });
 
     estadoNormalizado.tarefas.forEach((tarefa) => {
-      const statusPersistido = statusTarefasPersistidas.get(String(tarefa.id));
+      const tarefaPersistida = tarefasPersistidas.get(String(tarefa.id));
+      const statusPersistido = tarefaPersistida?.status;
       const statusFinal =
         statusPersistido === "Concluida" && tarefa.status !== "Concluida"
           ? "Concluida"
           : tarefa.status || "Pendente";
+      const concluidaEmFinal =
+        statusFinal === "Concluida"
+          ? tarefa.concluidaEm ||
+            tarefaPersistida?.concluida_em ||
+            new Date().toISOString()
+          : "";
       const tarefaParaSalvar = {
         ...tarefa,
         status: statusFinal,
+        concluidaEm: concluidaEmFinal,
       };
 
       inserirTarefa.run(
@@ -313,6 +335,7 @@ async function salvarEstado(estado, ownerId) {
         tarefa.origem || "",
         tarefa.prioridade ? 1 : 0,
         tarefa.motivoPrioridade || "",
+        concluidaEmFinal,
         JSON.stringify(tarefaParaSalvar),
       );
     });
@@ -398,6 +421,7 @@ function mapearTarefaDoBanco(linha) {
     origem: linha.origem,
     prioridade: Boolean(linha.prioridade),
     motivoPrioridade: linha.motivo_prioridade,
+    concluidaEm: linha.concluida_em || dados.concluidaEm || "",
   };
 }
 
@@ -497,7 +521,7 @@ async function carregarPortalPrestador(funcionarioId) {
     .prepare(
       `SELECT id, apartamento_id, apartamento, bairro_apartamento, descricao,
               checkin, checkout, hora_checkout, status, funcionario_id,
-              origem, prioridade, motivo_prioridade, dados_json
+              origem, prioridade, motivo_prioridade, concluida_em, dados_json
        FROM tarefas
        WHERE funcionario_id = ?
        ORDER BY checkout, apartamento`,
@@ -755,11 +779,17 @@ async function concluirTarefaPrestador(dados) {
     throw erro;
   }
 
-  banco
-    .prepare("UPDATE tarefas SET status = ? WHERE id = ? AND funcionario_id = ?")
-    .run("Concluida", tarefaId, funcionarioId);
+  const concluidaEm = new Date().toISOString();
 
-  return { id: tarefaId, status: "Concluida" };
+  banco
+    .prepare(
+      `UPDATE tarefas
+       SET status = ?, concluida_em = COALESCE(concluida_em, ?)
+       WHERE id = ? AND funcionario_id = ?`,
+    )
+    .run("Concluida", concluidaEm, tarefaId, funcionarioId);
+
+  return { id: tarefaId, status: "Concluida", concluidaEm };
 }
 
 function enviarJson(resposta, status, corpo) {

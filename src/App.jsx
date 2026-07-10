@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Navigate, Routes, Route } from "react-router-dom";
 
 import Login from "./components/login";
@@ -56,6 +56,28 @@ function App() {
   const [tarefas, setTarefas] = useState([]);
   const [bancoCarregado, setBancoCarregado] = useState(false);
 
+  const carregarEstadoUsuario = useCallback(async function carregarEstadoUsuario(
+    usuarioId,
+  ) {
+    const resposta = await fetch(
+      `/api/state?ownerId=${encodeURIComponent(usuarioId)}`,
+    );
+
+    if (!resposta.ok) {
+      throw new Error("Nao foi possivel carregar o banco.");
+    }
+
+    const estado = await resposta.json();
+
+    setFuncionarios(
+      Array.isArray(estado.funcionarios) ? estado.funcionarios : [],
+    );
+    setApartamentos(
+      Array.isArray(estado.apartamentos) ? estado.apartamentos : [],
+    );
+    setTarefas(Array.isArray(estado.tarefas) ? estado.tarefas : []);
+  }, []);
+
   useEffect(() => {
     async function carregarBanco() {
       if (!usuarioLogado?.id) {
@@ -68,22 +90,7 @@ function App() {
 
       try {
         setBancoCarregado(false);
-        const resposta = await fetch(
-          `/api/state?ownerId=${encodeURIComponent(usuarioLogado.id)}`,
-        );
-
-        if (!resposta.ok) {
-          throw new Error("Nao foi possivel carregar o banco.");
-        }
-
-        const estado = await resposta.json();
-        setFuncionarios(
-          Array.isArray(estado.funcionarios) ? estado.funcionarios : [],
-        );
-        setApartamentos(
-          Array.isArray(estado.apartamentos) ? estado.apartamentos : [],
-        );
-        setTarefas(Array.isArray(estado.tarefas) ? estado.tarefas : []);
+        await carregarEstadoUsuario(usuarioLogado.id);
       } catch {
         setFuncionarios([]);
         setApartamentos([]);
@@ -94,7 +101,7 @@ function App() {
     }
 
     carregarBanco();
-  }, [usuarioLogado?.id]);
+  }, [carregarEstadoUsuario, usuarioLogado?.id]);
 
   useEffect(() => {
     if (usuarioLogado) {
@@ -284,16 +291,38 @@ function App() {
     );
   }
 
+  function atualizarTarefa(tarefaId, campos) {
+    setTarefas((tarefasAtuais) =>
+      tarefasAtuais.map((tarefa) =>
+        tarefa.id === tarefaId ? { ...tarefa, ...campos } : tarefa,
+      ),
+    );
+  }
+
   function concluirTarefa(tarefaId) {
     setTarefas((tarefasAtuais) =>
       tarefasAtuais.map((tarefa) =>
-        tarefa.id === tarefaId ? { ...tarefa, status: "Concluida" } : tarefa,
+        tarefa.id === tarefaId
+          ? {
+              ...tarefa,
+              status: "Concluida",
+              concluidaEm: tarefa.concluidaEm || new Date().toISOString(),
+            }
+          : tarefa,
       ),
     );
   }
 
   function sair() {
     setUsuarioLogado(null);
+  }
+
+  function atualizarDados() {
+    if (!usuarioLogado?.id) {
+      return Promise.resolve();
+    }
+
+    return carregarEstadoUsuario(usuarioLogado.id);
   }
 
   return (
@@ -343,6 +372,8 @@ function App() {
               usuario={usuarioLogado}
               onSair={sair}
               onAtribuirFuncionario={atribuirFuncionarioTarefa}
+              onAtualizarDados={atualizarDados}
+              onAtualizarTarefa={atualizarTarefa}
               tarefasPendentes={tarefasPendentes}
             />
           ) : (
@@ -386,6 +417,8 @@ function App() {
             <Tarefas
               funcionarios={funcionarios}
               onAtribuirFuncionario={atribuirFuncionarioTarefa}
+              onAtualizarDados={atualizarDados}
+              onAtualizarTarefa={atualizarTarefa}
               tarefas={tarefas}
             />
           }

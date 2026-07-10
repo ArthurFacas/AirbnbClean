@@ -40,6 +40,25 @@ function obterDataCheckout(tarefa) {
   return Number.isNaN(data.getTime()) ? "" : data.toISOString().slice(0, 10);
 }
 
+function obterDataConclusao(tarefa) {
+  const valor = tarefa.concluidaEm || tarefa.concluida_em;
+
+  if (!valor) {
+    return obterDataCheckout(tarefa);
+  }
+
+  const texto = String(valor);
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(texto)) {
+    return texto.slice(0, 10);
+  }
+
+  const data = new Date(texto);
+  return Number.isNaN(data.getTime())
+    ? obterDataCheckout(tarefa)
+    : data.toISOString().slice(0, 10);
+}
+
 function obterAmanha() {
   const amanha = new Date();
   amanha.setDate(amanha.getDate() + 1);
@@ -82,14 +101,14 @@ function formatarMes(dataMes) {
   });
 }
 
-function montarDiasDoMes(dataMes, tarefasPendentes) {
+function montarDiasDoMes(dataMes, tarefasPendentes, obterData = obterDataCheckout) {
   const [ano, mes] = dataMes.split("-").map(Number);
   const primeiroDia = new Date(ano, mes - 1, 1);
   const ultimoDia = new Date(ano, mes, 0);
   const diasAntes = primeiroDia.getDay();
   const totalDias = ultimoDia.getDate();
   const tarefasPorData = tarefasPendentes.reduce((mapa, tarefa) => {
-    const data = obterDataCheckout(tarefa);
+    const data = obterData(tarefa);
 
     if (!mapa[data]) {
       mapa[data] = [];
@@ -161,7 +180,19 @@ function montarMensagemWhatsapp(funcionario, tarefasAmanha, dataAmanha) {
   ].join("\n");
 }
 
-function Tarefas({ tarefas, funcionarios, onAtribuirFuncionario }) {
+function encontrarFuncionario(funcionarios, funcionarioId) {
+  return funcionarios.find(
+    (funcionario) => String(funcionario.id) === String(funcionarioId),
+  );
+}
+
+function Tarefas({
+  tarefas,
+  funcionarios,
+  onAtribuirFuncionario,
+  onAtualizarDados,
+  onAtualizarTarefa,
+}) {
   const [visualizacao, setVisualizacao] = useState("calendario");
   const [prestadorSelecionado, setPrestadorSelecionado] = useState("");
   const [dataSelecionada, setDataSelecionada] = useState("");
@@ -170,9 +201,13 @@ function Tarefas({ tarefas, funcionarios, onAtribuirFuncionario }) {
   const [mesCalendario, setMesCalendario] = useState(() =>
     obterMesInput(obterHojeInput()),
   );
+  const [mesCalendarioConcluidas, setMesCalendarioConcluidas] = useState(() =>
+    obterMesInput(obterHojeInput()),
+  );
   const [mesRetornoCalendario, setMesRetornoCalendario] = useState(() =>
     obterMesInput(obterHojeInput()),
   );
+  const [dataConcluidaSelecionada, setDataConcluidaSelecionada] = useState("");
   const dataAmanha = obterAmanha();
   const tarefasPendentes = tarefas
     .filter((tarefa) => tarefa.status === "Pendente")
@@ -190,9 +225,19 @@ function Tarefas({ tarefas, funcionarios, onAtribuirFuncionario }) {
     (tarefa) => tarefa.prioridade,
   ).length;
   const diasDoCalendario = montarDiasDoMes(mesCalendario, tarefasPendentes);
+  const diasConcluidasDoCalendario = montarDiasDoMes(
+    mesCalendarioConcluidas,
+    tarefasConcluidas,
+    obterDataConclusao,
+  );
   const tarefasDaDataSelecionada = dataSelecionada
     ? tarefasPendentes.filter(
         (tarefa) => obterDataCheckout(tarefa) === dataSelecionada,
+      )
+    : [];
+  const tarefasConcluidasDaDataSelecionada = dataConcluidaSelecionada
+    ? tarefasConcluidas.filter(
+        (tarefa) => obterDataConclusao(tarefa) === dataConcluidaSelecionada,
       )
     : [];
   const gruposPrestadoresBase = [
@@ -288,6 +333,13 @@ function Tarefas({ tarefas, funcionarios, onAtribuirFuncionario }) {
           <span>{tarefasSemResponsavel} sem responsavel</span>
           <span>{tarefasPrioritarias} prioridade</span>
           <span>{tarefasAmanhaTotal} para amanha</span>
+          <button
+            className="task-refresh-button"
+            type="button"
+            onClick={onAtualizarDados}
+          >
+            Atualizar
+          </button>
         </div>
       </div>
 
@@ -350,6 +402,7 @@ function Tarefas({ tarefas, funcionarios, onAtribuirFuncionario }) {
               key={tarefa.id}
               funcionarios={funcionarios}
               onAtribuirFuncionario={onAtribuirFuncionario}
+              onAtualizarTarefa={onAtualizarTarefa}
               selectId={`lista-funcionario-${tarefa.id}`}
               tarefa={tarefa}
             />
@@ -395,6 +448,7 @@ function Tarefas({ tarefas, funcionarios, onAtribuirFuncionario }) {
                     key={tarefa.id}
                     funcionarios={funcionarios}
                     onAtribuirFuncionario={onAtribuirFuncionario}
+                    onAtualizarTarefa={onAtualizarTarefa}
                     selectId={`data-funcionario-${tarefa.id}`}
                     tarefa={tarefa}
                   />
@@ -514,6 +568,7 @@ function Tarefas({ tarefas, funcionarios, onAtribuirFuncionario }) {
                       key={tarefa.id}
                       funcionarios={funcionarios}
                       onAtribuirFuncionario={onAtribuirFuncionario}
+                      onAtualizarTarefa={onAtualizarTarefa}
                       selectId={`prestador-funcionario-${tarefa.id}`}
                       tarefa={tarefa}
                     />
@@ -532,30 +587,161 @@ function Tarefas({ tarefas, funcionarios, onAtribuirFuncionario }) {
             <strong>{tarefasConcluidas.length}</strong>
           </div>
 
+          <div className="provider-calendar-panel">
+            <div className="provider-calendar-header">
+              <strong>{formatarMes(mesCalendarioConcluidas)}</strong>
+              <input
+                aria-label="Escolher mes de concluidas"
+                type="month"
+                value={mesCalendarioConcluidas}
+                onChange={(event) => {
+                  setMesCalendarioConcluidas(event.target.value);
+                  setDataConcluidaSelecionada("");
+                }}
+              />
+            </div>
+
+            <div className="provider-calendar-weekdays">
+              {["D", "S", "T", "Q", "Q", "S", "S"].map((dia, index) => (
+                <span key={`${dia}-${index}`}>{dia}</span>
+              ))}
+            </div>
+
+            <div className="provider-calendar-grid">
+              {diasConcluidasDoCalendario.map((dia, index) =>
+                dia ? (
+                  <button
+                    key={dia.data}
+                    type="button"
+                    className={`provider-calendar-day ${
+                      dia.tarefas.length ? "has-tasks" : ""
+                    } ${dataConcluidaSelecionada === dia.data ? "active" : ""}`}
+                    onClick={() => setDataConcluidaSelecionada(dia.data)}
+                  >
+                    <span>{dia.dia}</span>
+                    {dia.tarefas.length > 0 && (
+                      <strong>{dia.tarefas.length}</strong>
+                    )}
+                  </button>
+                ) : (
+                  <div
+                    className="provider-calendar-day empty"
+                    key={`master-done-empty-${index}`}
+                  />
+                ),
+              )}
+            </div>
+
+            <div className="provider-calendar-results">
+              <div className="provider-calendar-results-header">
+                <strong>
+                  {dataConcluidaSelecionada
+                    ? formatarDataCompleta(dataConcluidaSelecionada)
+                    : "Escolha uma data concluida"}
+                </strong>
+                {dataConcluidaSelecionada && (
+                  <span>{tarefasConcluidasDaDataSelecionada.length} tarefa(s)</span>
+                )}
+              </div>
+
+              {dataConcluidaSelecionada ? (
+                tarefasConcluidasDaDataSelecionada.length ? (
+                  <div className="list-grid">
+                    {tarefasConcluidasDaDataSelecionada.map((tarefa) => {
+                      const responsavel = encontrarFuncionario(
+                        funcionarios,
+                        tarefa.funcionarioId,
+                      );
+
+                      return (
+                        <div
+                          className="info-card task-card completed"
+                          key={tarefa.id}
+                        >
+                          <div className="task-card-main">
+                            <span className="task-apartment-label">
+                              Apartamento
+                            </span>
+                            <h3>{tarefa.apartamento}</h3>
+                            <p>{tarefa.descricao}</p>
+                          </div>
+                          <div className="provider-task-done-by">
+                            <span>Feita por</span>
+                            <strong>
+                              {responsavel?.nome ||
+                                "Prestador nao identificado"}
+                            </strong>
+                            <span>Concluida em</span>
+                            <strong>
+                              {formatarDataCompleta(obterDataConclusao(tarefa))}
+                            </strong>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="provider-empty compact">
+                    <p>Nenhuma tarefa concluida nessa data.</p>
+                  </div>
+                )
+              ) : (
+                <div className="provider-empty compact">
+                  <p>Toque em um dia marcado para ver as concluidas.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
           {tarefasConcluidas.length > 0 ? (
             <div className="list-grid">
               {tarefasConcluidas.map((tarefa) => (
                 <div className="info-card task-card completed" key={tarefa.id}>
-                  <div className="task-card-top">
-                    <div className="task-card-flags">
-                      <span className="assigned-chip">Concluida</span>
-                    </div>
-                  </div>
-                  <div className="task-card-main">
-                    <span className="task-apartment-label">Apartamento</span>
-                    <h3>{tarefa.apartamento}</h3>
-                    <p>{tarefa.descricao}</p>
-                  </div>
-                  <div className="task-checkout-row">
-                    <div>
-                      <span>Checkout</span>
-                      <strong>{formatarDataCompleta(tarefa.checkout)}</strong>
-                    </div>
-                    <div>
-                      <span>Horario</span>
-                      <strong>{tarefa.horaCheckout || "11:00"}</strong>
-                    </div>
-                  </div>
+                  {(() => {
+                    const responsavel = encontrarFuncionario(
+                      funcionarios,
+                      tarefa.funcionarioId,
+                    );
+
+                    return (
+                      <>
+                        <div className="task-card-top">
+                          <div className="task-card-flags">
+                            <span className="assigned-chip">Concluida</span>
+                          </div>
+                        </div>
+                        <div className="task-card-main">
+                          <span className="task-apartment-label">
+                            Apartamento
+                          </span>
+                          <h3>{tarefa.apartamento}</h3>
+                          <p>{tarefa.descricao}</p>
+                        </div>
+                        <div className="task-checkout-row">
+                          <div>
+                            <span>Checkout</span>
+                            <strong>
+                              {formatarDataCompleta(tarefa.checkout)}
+                            </strong>
+                          </div>
+                          <div>
+                            <span>Horario</span>
+                            <strong>{tarefa.horaCheckout || "11:00"}</strong>
+                          </div>
+                        </div>
+                        <div className="provider-task-done-by">
+                          <span>Feita por</span>
+                          <strong>
+                            {responsavel?.nome || "Prestador nao identificado"}
+                          </strong>
+                          <span>Concluida em</span>
+                          <strong>
+                            {formatarDataCompleta(obterDataConclusao(tarefa))}
+                          </strong>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
