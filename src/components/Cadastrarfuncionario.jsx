@@ -12,6 +12,8 @@ const estadoInicial = {
 
 function Cadastrarfuncionario({ onCadastrar }) {
   const [formulario, setFormulario] = useState(estadoInicial);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
   const navigate = useNavigate();
 
   function atualizarCampo(event) {
@@ -23,11 +25,25 @@ function Cadastrarfuncionario({ onCadastrar }) {
     }));
   }
 
-  function salvarFuncionario(event) {
+  async function salvarFuncionario(event) {
     event.preventDefault();
-    onCadastrar(formulario);
-    setFormulario(estadoInicial);
-    navigate("/dashboard/lista-funcionarios");
+
+    if (salvando) {
+      return;
+    }
+
+    setErro("");
+    setSalvando(true);
+
+    try {
+      await onCadastrar(formulario);
+      setFormulario(estadoInicial);
+      navigate("/dashboard/lista-funcionarios");
+    } catch {
+      setErro("Nao foi possivel salvar o prestador. Tente novamente.");
+    } finally {
+      setSalvando(false);
+    }
   }
 
   return (
@@ -115,8 +131,10 @@ function Cadastrarfuncionario({ onCadastrar }) {
           <option value="Motoristas">Motoristas</option>
         </select>
 
-        <button className="primary-action" type="submit">
-          Cadastrar
+        {erro && <p className="form-error">{erro}</p>}
+
+        <button className="primary-action" type="submit" disabled={salvando}>
+          {salvando ? "Salvando..." : "Cadastrar"}
         </button>
       </form>
     </div>

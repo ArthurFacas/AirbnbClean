@@ -1225,9 +1225,11 @@
 
 .provider-page {
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 28px;
   background:
     linear-gradient(180deg, #eef7f8 0%, #f7fafc 32%, #f4f7fb 100%);
+  overflow-x: hidden;
 }
 
 .provider-shell {
@@ -1349,15 +1351,28 @@
   width: 100%;
   border: 1px solid #cbd5e1;
   border-radius: 13px;
+  background: #ffffff;
   color: #172033;
   font-size: 15px;
   padding: 12px;
 }
 
+.provider-auth-form input::placeholder {
+  color: #94a3b8;
+}
+
+.provider-auth-form input:-webkit-autofill,
+.provider-auth-form input:-webkit-autofill:hover,
+.provider-auth-form input:-webkit-autofill:focus {
+  box-shadow: 0 0 0 1000px #ffffff inset;
+  -webkit-text-fill-color: #172033;
+}
+
 .provider-password-input {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+  min-width: 0;
 }
 
 .provider-password-input button {
@@ -2033,6 +2048,26 @@ button:disabled,
     padding: 14px;
   }
 
+  .provider-auth-card {
+    margin: 0 auto;
+    padding: 18px;
+    border-radius: 20px;
+  }
+
+  .provider-auth-brand h1 {
+    font-size: 26px;
+    line-height: 1.08;
+  }
+
+  .provider-auth-brand p {
+    font-size: 14px;
+  }
+
+  .provider-auth-form input,
+  .provider-auth-submit {
+    min-height: 46px;
+  }
+
   .provider-header {
     flex-direction: column;
     margin-bottom: 14px;
@@ -2103,7 +2138,49 @@ button:disabled,
 
 @media (max-width: 640px) {
   .provider-page {
-    padding: 10px;
+    display: block;
+    padding: max(10px, env(safe-area-inset-top)) 10px
+      max(14px, env(safe-area-inset-bottom));
+  }
+
+  .provider-shell {
+    width: 100%;
+  }
+
+  .provider-auth-card {
+    width: 100%;
+    margin: 0;
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .provider-auth-brand {
+    margin-bottom: 14px;
+  }
+
+  .provider-auth-brand h1 {
+    font-size: 24px;
+  }
+
+  .provider-auth-form {
+    gap: 8px;
+  }
+
+  .provider-auth-form input {
+    font-size: 16px;
+    padding: 11px;
+  }
+
+  .provider-password-input {
+    grid-template-columns: minmax(0, 1fr) 72px;
+  }
+
+  .provider-password-input button {
+    padding: 0 10px;
+  }
+
+  .provider-auth-submit {
+    width: 100%;
   }
 
   .provider-header p {
@@ -2125,6 +2202,16 @@ button:disabled,
     flex-direction: column;
     min-height: 50px;
     padding: 6px 4px;
+  }
+
+  .provider-task-top {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .provider-task-top > strong {
+    max-width: 100%;
+    white-space: normal;
   }
 
   .provider-task-meta {

@@ -127,23 +127,49 @@ function App() {
     (tarefa) => tarefa.status === "Pendente",
   );
 
-  function cadastrarFuncionario(funcionario) {
+  async function salvarEstadoAtualizado(estadoAtualizado) {
+    if (!usuarioLogado?.id) {
+      return;
+    }
+
+    const resposta = await fetch("/api/state", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerId: usuarioLogado.id,
+        funcionarios: estadoAtualizado.funcionarios,
+        apartamentos: estadoAtualizado.apartamentos,
+        tarefas: estadoAtualizado.tarefas,
+      }),
+    });
+
+    if (!resposta.ok) {
+      throw new Error("Nao foi possivel salvar no banco.");
+    }
+  }
+
+  async function cadastrarFuncionario(funcionario) {
     const novoFuncionario = {
       ...funcionario,
       id: Date.now(),
       bairro: String(funcionario.bairro || "").trim(),
       telefone: normalizarTelefoneWhatsapp(funcionario.telefone),
     };
+    const funcionariosAtualizados = [...funcionarios, novoFuncionario];
+    const tarefasAtualizadas = atribuirTarefasAoPrestadorUnico(
+      tarefas,
+      funcionariosAtualizados,
+    );
 
-    setFuncionarios((funcionariosAtuais) => {
-      const funcionariosAtualizados = [...funcionariosAtuais, novoFuncionario];
-
-      setTarefas((tarefasAtuais) =>
-        atribuirTarefasAoPrestadorUnico(tarefasAtuais, funcionariosAtualizados),
-      );
-
-      return funcionariosAtualizados;
+    await salvarEstadoAtualizado({
+      funcionarios: funcionariosAtualizados,
+      apartamentos,
+      tarefas: tarefasAtualizadas,
     });
+    setFuncionarios(funcionariosAtualizados);
+    setTarefas(tarefasAtualizadas);
 
     return novoFuncionario;
   }
