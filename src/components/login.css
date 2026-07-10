@@ -56,6 +56,32 @@ body {
   gap: 18px;
 }
 
+.auth-mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 22px;
+  padding: 6px;
+  border-radius: 14px;
+  background: #f1f5f9;
+}
+
+.auth-mode-switch button {
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 10px;
+}
+
+.auth-mode-switch button.active {
+  background: white;
+  color: #2563eb;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
 .login-field {
   display: grid;
   gap: 8px;
@@ -85,6 +111,35 @@ body {
   outline: 3px solid rgba(37, 99, 235, 0.16);
 }
 
+.password-input {
+  position: relative;
+}
+
+.password-input input {
+  padding-right: 48px;
+}
+
+.password-input button {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.password-input button:hover {
+  background: #e2e8f0;
+  color: #111827;
+}
+
 .login-actions {
   margin-top: 4px;
 }
@@ -103,6 +158,20 @@ body {
 
 .login-actions button:hover {
   background: #1d4ed8;
+}
+
+.login-error {
+  margin: 0;
+  color: #dc2626;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.login-success {
+  margin: 0;
+  color: #15803d;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 @media (max-width: 520px) {

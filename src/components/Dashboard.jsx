@@ -1,19 +1,41 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import TarefaCard from "./TarefaCard";
+import { criarDataCheckout } from "../utils/tarefas";
 import "./Dashboard.css";
+
+function compararTarefasPorCheckout(tarefaA, tarefaB) {
+  const dataA = criarDataCheckout(tarefaA).getTime();
+  const dataB = criarDataCheckout(tarefaB).getTime();
+  const valorA = Number.isNaN(dataA) ? Number.MAX_SAFE_INTEGER : dataA;
+  const valorB = Number.isNaN(dataB) ? Number.MAX_SAFE_INTEGER : dataB;
+
+  if (valorA !== valorB) {
+    return valorA - valorB;
+  }
+
+  return String(tarefaA.apartamento || "").localeCompare(
+    String(tarefaB.apartamento || ""),
+    "pt-BR",
+    { numeric: true },
+  );
+}
 
 function DashboardHome({
   apartamentoTotal,
   funcionarioTotal,
   funcionarios,
+  usuario,
   onAtribuirFuncionario,
   tarefasPendentes,
 }) {
   const navigate = useNavigate();
+  const tarefasOrdenadas = [...tarefasPendentes].sort(
+    compararTarefasPorCheckout,
+  );
 
   return (
     <>
-      <h1>Bem-vinda, Aline</h1>
+      <h1>Bem-vindo, {usuario?.nome || "usuario"}</h1>
       <p>Resumo geral da operacao.</p>
 
       <section className="cards-resumo">
@@ -23,7 +45,7 @@ function DashboardHome({
         </div>
 
         <div className="resumo-card">
-          <p>Funcionarios</p>
+          <p>Prestadores de servico</p>
           <h2>{funcionarioTotal}</h2>
         </div>
 
@@ -42,7 +64,7 @@ function DashboardHome({
         </div>
 
         <div className="list-grid">
-          {tarefasPendentes.map((tarefa) => (
+          {tarefasOrdenadas.map((tarefa) => (
             <TarefaCard
               key={tarefa.id}
               funcionarios={funcionarios}
@@ -61,6 +83,8 @@ function Dashboard({
   apartamentoTotal,
   funcionarioTotal,
   funcionarios,
+  usuario,
+  onSair,
   onAtribuirFuncionario,
   tarefasPendentes,
 }) {
@@ -76,13 +100,23 @@ function Dashboard({
         <nav>
           <button onClick={() => navigate("/dashboard")}>Dashboard</button>
           <button onClick={() => navigate("/dashboard/lista-funcionarios")}>
-            Funcionarios
+            Prestadores de servico
           </button>
           <button onClick={() => navigate("/dashboard/lista-apartamentos")}>
             Apartamentos
           </button>
           <button onClick={() => navigate("/dashboard/tarefas")}>Tarefas</button>
         </nav>
+
+        <button
+          className="sidebar-logout"
+          onClick={() => {
+            onSair();
+            navigate("/");
+          }}
+        >
+          Sair
+        </button>
       </aside>
 
       <main className="dashboard-main">
@@ -91,6 +125,7 @@ function Dashboard({
             apartamentoTotal={apartamentoTotal}
             funcionarioTotal={funcionarioTotal}
             funcionarios={funcionarios}
+            usuario={usuario}
             onAtribuirFuncionario={onAtribuirFuncionario}
             tarefasPendentes={tarefasPendentes}
           />

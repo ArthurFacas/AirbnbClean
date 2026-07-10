@@ -1,20 +1,5 @@
 import { useNavigate } from "react-router-dom";
 
-function formatarData(data) {
-  return new Date(`${data}T00:00:00`).toLocaleDateString("pt-BR");
-}
-
-function obterStatus(checkout, horaCheckout) {
-  const agora = new Date();
-  const dataCheckout = new Date(`${checkout}T${horaCheckout}`);
-
-  if (dataCheckout < agora) {
-    return "Pendente";
-  }
-
-  return "Reservado";
-}
-
 function Listaapartamentos({ apartamentos, onExcluir }) {
   const navigate = useNavigate();
 
@@ -34,21 +19,21 @@ function Listaapartamentos({ apartamentos, onExcluir }) {
         </button>
       </div>
 
-      <div className="list-grid">
+      <div className="apartment-grid">
         {apartamentos.map((apartamento) => (
-          <div className="info-card" key={apartamento.id}>
-            <h3>Apartamento {apartamento.numero}</h3>
-            <p>Rua: {apartamento.rua}</p>
-            <p>Host: {apartamento.host}</p>
-            <p>Reservado em: {formatarData(apartamento.dataReserva)}</p>
-            <p>
-              Checkout: {formatarData(apartamento.checkout)} as{" "}
-              {apartamento.horaCheckout}
-            </p>
-            <p>
-              Status:{" "}
-              {obterStatus(apartamento.checkout, apartamento.horaCheckout)}
-            </p>
+          <div className="info-card apartment-card" key={apartamento.id}>
+            <div className="apartment-card-top">
+              <div>
+                <span>Apartamento</span>
+                <h3>{apartamento.numero}</h3>
+              </div>
+            </div>
+
+            <div className="apartment-location">
+              <p>{apartamento["nome.do.predio"] || "Predio nao informado"}</p>
+              <span>{apartamento.Bairro || "Bairro nao informado"}</span>
+            </div>
+
             <button
               className="danger-action"
               onClick={() => onExcluir(apartamento.id)}

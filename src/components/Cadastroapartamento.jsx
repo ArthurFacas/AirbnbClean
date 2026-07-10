@@ -2,16 +2,20 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const estadoInicial = {
+  Bairro: "",
   rua: "",
+  "nome.do.predio": "",
   numero: "",
-  host: "",
-  dataReserva: "",
-  checkout: "",
+  Andar: "",
+  bloco: "",
+  ICALL: "",
   horaCheckout: "",
 };
 
 function CadastroApartamento({ onCadastrar }) {
   const [formulario, setFormulario] = useState(estadoInicial);
+  const [carregandoIcal, setCarregandoIcal] = useState(false);
+  const [erroIcal, setErroIcal] = useState("");
   const navigate = useNavigate();
 
   function atualizarCampo(event) {
@@ -23,11 +27,30 @@ function CadastroApartamento({ onCadastrar }) {
     }));
   }
 
-  function salvarApartamento(event) {
+  async function salvarApartamento(event) {
     event.preventDefault();
-    onCadastrar(formulario);
-    setFormulario(estadoInicial);
-    navigate("/dashboard/lista-apartamentos");
+
+    if (carregandoIcal) {
+      return;
+    }
+
+    setErroIcal("");
+    setCarregandoIcal(true);
+
+    try {
+      await onCadastrar({
+        ...formulario,
+        horaCheckout: "11:00",
+      });
+      setFormulario(estadoInicial);
+      navigate("/dashboard/lista-apartamentos");
+    } catch {
+      setErroIcal(
+        "Nao consegui ler o iCal. Cole o link completo exportado pelo Airbnb e tente novamente.",
+      );
+    } finally {
+      setCarregandoIcal(false);
+    }
   }
 
   return (
@@ -47,12 +70,32 @@ function CadastroApartamento({ onCadastrar }) {
       </div>
 
       <form className="form-panel" onSubmit={salvarApartamento}>
+        <label htmlFor="Bairro">Bairro</label>
+        <input
+          type="text"
+          id="Bairro"
+          name="Bairro"
+          value={formulario.Bairro}
+          onChange={atualizarCampo}
+          required
+        />
+
         <label htmlFor="rua">Rua</label>
         <input
           type="text"
           id="rua"
           name="rua"
           value={formulario.rua}
+          onChange={atualizarCampo}
+          required
+        />
+
+        <label htmlFor="nome do prédio">Nome do prédio</label>
+        <input
+          type="text"
+          id="nome.do.predio"
+          name="nome.do.predio"
+          value={formulario["nome.do.predio"]}
           onChange={atualizarCampo}
           required
         />
@@ -67,48 +110,41 @@ function CadastroApartamento({ onCadastrar }) {
           required
         />
 
-        <label htmlFor="host">Nome do host</label>
+        <label htmlFor="host">Andar</label>
         <input
           type="text"
-          id="host"
-          name="host"
-          value={formulario.host}
+          id="Andar"
+          name="Andar"
+          value={formulario.Andar}
           onChange={atualizarCampo}
           required
         />
 
-        <label htmlFor="dataReserva">Data reservada</label>
+        <label htmlFor="bloco">bloco</label>
         <input
-          type="date"
-          id="dataReserva"
-          name="dataReserva"
-          value={formulario.dataReserva}
+          type="text"
+          id="bloco"
+          name="bloco"
+          value={formulario.bloco}
           onChange={atualizarCampo}
           required
         />
 
-        <label htmlFor="checkout">Checkout</label>
+        <label htmlFor="dataReserva">Código ICALL</label>
         <input
-          type="date"
-          id="checkout"
-          name="checkout"
-          value={formulario.checkout}
+          type="text"
+          id="ICALL"
+          name="ICALL"
+          value={formulario.ICALL}
           onChange={atualizarCampo}
+          placeholder="Cole o link iCal do Airbnb"
           required
         />
 
-        <label htmlFor="horaCheckout">Hora do checkout</label>
-        <input
-          type="time"
-          id="horaCheckout"
-          name="horaCheckout"
-          value={formulario.horaCheckout}
-          onChange={atualizarCampo}
-          required
-        />
+        {erroIcal && <p className="form-error">{erroIcal}</p>}
 
-        <button className="primary-action" type="submit">
-          Cadastrar
+        <button className="primary-action" type="submit" disabled={carregandoIcal}>
+          {carregandoIcal ? "Buscando iCal..." : "Cadastrar"}
         </button>
       </form>
     </div>

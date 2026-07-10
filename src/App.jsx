@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, Routes, Route } from "react-router-dom";
 
 import Login from "./components/login";
@@ -7,133 +7,298 @@ import Listafuncionarios from "./components/Listafuncionarios";
 import Cadastrarfuncionario from "./components/Cadastrarfuncionario";
 import CadastroApartamento from "./components/Cadastroapartamento";
 import Listaapartamentos from "./components/Listaapartamentos";
+import PortalPrestador from "./components/PortalPrestador";
 import Tarefas from "./components/Tarefas";
+import { buscarReservasIcal } from "./utils/ical";
+
+function normalizarTelefoneWhatsapp(telefone) {
+  const somenteNumeros = String(telefone || "").replace(/\D/g, "");
+
+  if (somenteNumeros.length === 10 || somenteNumeros.length === 11) {
+    return `55${somenteNumeros}`;
+  }
+
+  return somenteNumeros;
+}
+
+function atribuirTarefasAoPrestadorUnico(tarefasAtuais, funcionariosAtuais) {
+  if (funcionariosAtuais.length !== 1) {
+    return tarefasAtuais;
+  }
+
+  const funcionarioUnico = funcionariosAtuais[0];
+  const precisaAtribuir = tarefasAtuais.some(
+    (tarefa) => String(tarefa.funcionarioId) !== String(funcionarioUnico.id),
+  );
+
+  if (!precisaAtribuir) {
+    return tarefasAtuais;
+  }
+
+  return tarefasAtuais.map((tarefa) =>
+    String(tarefa.funcionarioId) === String(funcionarioUnico.id)
+      ? tarefa
+      : { ...tarefa, funcionarioId: funcionarioUnico.id },
+  );
+}
 
 function App() {
-  const [funcionarios, setFuncionarios] = useState([
-    {
-      id: 1,
-      nome: "Luan",
-      nascimento: "2001-03-12",
-      email: "luan@email.com",
-      cargo: "Faxina",
-    },
-    {
-      id: 2,
-      nome: "Fernanda",
-      nascimento: "1995-09-20",
-      email: "fernanda@email.com",
-      cargo: "Gestao",
-    },
-    {
-      id: 3,
-      nome: "Lucia",
-      nascimento: "1998-06-04",
-      email: "lucia@email.com",
-      cargo: "Faxina",
-    },
-  ]);
-  const [apartamentos, setApartamentos] = useState([
-    {
-      id: 1,
-      numero: "101",
-      rua: "xxxxxxxxxx",
-      host: "Aline",
-      dataReserva: "2026-07-10",
-      checkout: "2026-07-12",
-      horaCheckout: "11:00",
-    },
-    {
-      id: 2,
-      numero: "404",
-      rua: "xxxxxxxxxx",
-      host: "Aline",
-      dataReserva: "2026-07-15",
-      checkout: "2026-07-29",
-      horaCheckout: "11:00",
-    },
-  ]);
-  const [tarefas, setTarefas] = useState([
-    {
-      id: 1,
-      apartamento: "101",
-      descricao: "Limpeza apos checkout",
-      checkout: "2026-07-01",
-      horaCheckout: "11:00",
-      status: "Pendente",
-      funcionarioId: "",
-    },
-    {
-      id: 2,
-      apartamento: "204",
-      descricao: "Limpeza completa",
-      checkout: "2026-07-02",
-      horaCheckout: "10:00",
-      status: "Pendente",
-      funcionarioId: "",
-    },
-    {
-      id: 3,
-      apartamento: "305",
-      descricao: "Reposicao e limpeza",
-      checkout: "2026-07-02",
-      horaCheckout: "12:30",
-      status: "Pendente",
-      funcionarioId: "",
-    },
-  ]);
+  const [usuarioLogado, setUsuarioLogado] = useState(() => {
+    try {
+      const usuarioSalvo = sessionStorage.getItem("cleanhost:usuario");
+      return usuarioSalvo ? JSON.parse(usuarioSalvo) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [funcionarios, setFuncionarios] = useState([]);
+  const [apartamentos, setApartamentos] = useState([]);
+  const [tarefas, setTarefas] = useState([]);
+  const [bancoCarregado, setBancoCarregado] = useState(false);
+
+  useEffect(() => {
+    async function carregarBanco() {
+      if (!usuarioLogado?.id) {
+        setFuncionarios([]);
+        setApartamentos([]);
+        setTarefas([]);
+        setBancoCarregado(true);
+        return;
+      }
+
+      try {
+        setBancoCarregado(false);
+        const resposta = await fetch(
+          `/api/state?ownerId=${encodeURIComponent(usuarioLogado.id)}`,
+        );
+
+        if (!resposta.ok) {
+          throw new Error("Nao foi possivel carregar o banco.");
+        }
+
+        const estado = await resposta.json();
+        setFuncionarios(
+          Array.isArray(estado.funcionarios) ? estado.funcionarios : [],
+        );
+        setApartamentos(
+          Array.isArray(estado.apartamentos) ? estado.apartamentos : [],
+        );
+        setTarefas(Array.isArray(estado.tarefas) ? estado.tarefas : []);
+      } catch {
+        setFuncionarios([]);
+        setApartamentos([]);
+        setTarefas([]);
+      } finally {
+        setBancoCarregado(true);
+      }
+    }
+
+    carregarBanco();
+  }, [usuarioLogado?.id]);
+
+  useEffect(() => {
+    if (usuarioLogado) {
+      sessionStorage.setItem("cleanhost:usuario", JSON.stringify(usuarioLogado));
+    } else {
+      sessionStorage.removeItem("cleanhost:usuario");
+    }
+  }, [usuarioLogado]);
+
+  useEffect(() => {
+    if (!bancoCarregado || !usuarioLogado?.id) {
+      return;
+    }
+
+    fetch("/api/state", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerId: usuarioLogado.id,
+        funcionarios,
+        apartamentos,
+        tarefas,
+      }),
+    }).catch(() => {});
+  }, [apartamentos, bancoCarregado, funcionarios, tarefas, usuarioLogado?.id]);
 
   const tarefasPendentes = tarefas.filter(
-    (tarefa) => tarefa.status === "Pendente"
+    (tarefa) => tarefa.status === "Pendente",
   );
 
   function cadastrarFuncionario(funcionario) {
-    setFuncionarios((funcionariosAtuais) => [
-      ...funcionariosAtuais,
-      { ...funcionario, id: Date.now() },
-    ]);
+    const novoFuncionario = {
+      ...funcionario,
+      id: Date.now(),
+      bairro: String(funcionario.bairro || "").trim(),
+      telefone: normalizarTelefoneWhatsapp(funcionario.telefone),
+    };
+
+    setFuncionarios((funcionariosAtuais) => {
+      const funcionariosAtualizados = [...funcionariosAtuais, novoFuncionario];
+
+      setTarefas((tarefasAtuais) =>
+        atribuirTarefasAoPrestadorUnico(tarefasAtuais, funcionariosAtualizados),
+      );
+
+      return funcionariosAtualizados;
+    });
+
+    return novoFuncionario;
   }
 
   function excluirFuncionario(id) {
-    setFuncionarios((funcionariosAtuais) =>
-      funcionariosAtuais.filter((funcionario) => funcionario.id !== id)
-    );
+    setFuncionarios((funcionariosAtuais) => {
+      const funcionariosAtualizados = funcionariosAtuais.filter(
+        (funcionario) => funcionario.id !== id,
+      );
+
+      setTarefas((tarefasAtuais) =>
+        atribuirTarefasAoPrestadorUnico(tarefasAtuais, funcionariosAtualizados),
+      );
+
+      return funcionariosAtualizados;
+    });
   }
 
-  function cadastrarApartamento(apartamento) {
+  function obterDataReserva(valor) {
+    if (!valor) {
+      return "";
+    }
+
+    return String(valor).slice(0, 10);
+  }
+
+  function montarTarefasIcal(
+    apartamento,
+    apartamentoId,
+    reservas,
+    reservasBase = reservas,
+  ) {
+    const datasCheckin = new Set(
+      reservasBase
+        .map((reserva) => obterDataReserva(reserva.checkin))
+        .filter(Boolean),
+    );
+
+    return reservas.map((reserva, index) => {
+      const dataCheckout = obterDataReserva(reserva.checkout);
+      const temCheckinNoMesmoDia = datasCheckin.has(dataCheckout);
+
+      return {
+        id: apartamentoId * 1000 + index + 1,
+        apartamento: apartamento.numero,
+        bairroApartamento: apartamento.Bairro || "",
+        descricao: reserva.resumo || "Limpeza apos checkout Airbnb",
+        checkin: obterDataReserva(reserva.checkin),
+        checkout: dataCheckout,
+        horaCheckout: apartamento.horaCheckout || "11:00",
+        status: "Pendente",
+        funcionarioId: funcionarios.length === 1 ? funcionarios[0].id : "",
+        origem: "Airbnb iCal",
+        apartamentoId,
+        prioridade: temCheckinNoMesmoDia,
+        motivoPrioridade: temCheckinNoMesmoDia
+          ? "Checkout e check-in no mesmo dia"
+          : "",
+      };
+    });
+  }
+
+  async function cadastrarApartamento(apartamento) {
+    const apartamentoId = Date.now();
+    const calendario = apartamento.ICALL
+      ? await buscarReservasIcal(apartamento.ICALL)
+      : null;
+    const reservas = calendario?.reservas || [];
+    const apartamentoCompleto = calendario
+      ? {
+          ...apartamento,
+          ICALL: calendario.urlIcal,
+          reservas,
+          dataReserva: calendario.proximaReserva.checkin,
+          checkout: calendario.proximaReserva.checkout,
+          horaCheckout: apartamento.horaCheckout || "11:00",
+        }
+      : { ...apartamento };
+
     setApartamentos((apartamentosAtuais) => [
       ...apartamentosAtuais,
-      { ...apartamento, id: Date.now() },
+      { ...apartamentoCompleto, id: apartamentoId },
     ]);
+
+    if (reservas.length) {
+      setTarefas((tarefasAtuais) => [
+        ...tarefasAtuais,
+        ...montarTarefasIcal(
+          apartamentoCompleto,
+          apartamentoId,
+          reservas,
+          calendario?.todasReservas || reservas,
+        ),
+      ]);
+    }
   }
 
   function excluirApartamento(id) {
     setApartamentos((apartamentosAtuais) =>
-      apartamentosAtuais.filter((apartamento) => apartamento.id !== id)
+      apartamentosAtuais.filter((apartamento) => apartamento.id !== id),
+    );
+    setTarefas((tarefasAtuais) =>
+      tarefasAtuais.filter((tarefa) => tarefa.apartamentoId !== id),
     );
   }
 
   function atribuirFuncionarioTarefa(tarefaId, funcionarioId) {
     setTarefas((tarefasAtuais) =>
       tarefasAtuais.map((tarefa) =>
-        tarefa.id === tarefaId ? { ...tarefa, funcionarioId } : tarefa
-      )
+        tarefa.id === tarefaId ? { ...tarefa, funcionarioId } : tarefa,
+      ),
     );
+  }
+
+  function concluirTarefa(tarefaId) {
+    setTarefas((tarefasAtuais) =>
+      tarefasAtuais.map((tarefa) =>
+        tarefa.id === tarefaId ? { ...tarefa, status: "Concluida" } : tarefa,
+      ),
+    );
+  }
+
+  function sair() {
+    setUsuarioLogado(null);
   }
 
   return (
     <Routes>
-      <Route path="/" element={<Login />} />
+      <Route path="/" element={<Login onEntrar={setUsuarioLogado} />} />
+      <Route
+        path="/prestador/:prestadorId"
+        element={
+          <PortalPrestador
+            funcionarios={funcionarios}
+            onConcluirTarefa={concluirTarefa}
+            tarefas={tarefas}
+          />
+        }
+      />
       <Route
         path="/dashboard"
         element={
-          <Dashboard
-            apartamentoTotal={apartamentos.length}
-            funcionarioTotal={funcionarios.length}
-            funcionarios={funcionarios}
-            onAtribuirFuncionario={atribuirFuncionarioTarefa}
-            tarefasPendentes={tarefasPendentes}
-          />
+          usuarioLogado ? (
+            <Dashboard
+              apartamentoTotal={apartamentos.length}
+              funcionarioTotal={funcionarios.length}
+              funcionarios={funcionarios}
+              usuario={usuarioLogado}
+              onSair={sair}
+              onAtribuirFuncionario={atribuirFuncionarioTarefa}
+              tarefasPendentes={tarefasPendentes}
+            />
+          ) : (
+            <Navigate to="/" replace />
+          )
         }
       >
         <Route

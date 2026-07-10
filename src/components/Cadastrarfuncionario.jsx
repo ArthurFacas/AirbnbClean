@@ -5,6 +5,8 @@ const estadoInicial = {
   nome: "",
   nascimento: "",
   email: "",
+  telefone: "",
+  bairro: "",
   cargo: "",
 };
 
@@ -32,8 +34,10 @@ function Cadastrarfuncionario({ onCadastrar }) {
     <div className="content-page">
       <div className="page-title-row">
         <div>
-          <h1>Cadastrar funcionario</h1>
-          <p>Preencha os dados para adicionar um funcionario a lista.</p>
+          <h1>Cadastrar Prestador de serviço</h1>
+          <p>
+            Preencha os dados para adicionar um prestador de serviço a lista.
+          </p>
         </div>
 
         <button
@@ -72,6 +76,28 @@ function Cadastrarfuncionario({ onCadastrar }) {
           name="email"
           value={formulario.email}
           onChange={atualizarCampo}
+          required
+        />
+
+        <label htmlFor="telefone">WhatsApp</label>
+        <input
+          type="tel"
+          id="telefone"
+          name="telefone"
+          value={formulario.telefone}
+          onChange={atualizarCampo}
+          placeholder="(11) 99999-9999"
+          required
+        />
+
+        <label htmlFor="bairro">Bairro onde mora</label>
+        <input
+          type="text"
+          id="bairro"
+          name="bairro"
+          value={formulario.bairro}
+          onChange={atualizarCampo}
+          placeholder="Ex: Centro"
           required
         />
 
