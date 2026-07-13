@@ -657,6 +657,56 @@ async function autenticarUsuario(dados) {
   return usuarioPublico(usuario);
 }
 
+async function excluirContaUsuario(dados) {
+  await garantirBanco();
+
+  const usuarioId = normalizarOwnerId(dados.usuarioId || dados.ownerId);
+
+  if (!usuarioId) {
+    const erro = new Error("Usuario invalido.");
+    erro.status = 400;
+    throw erro;
+  }
+
+  const usuario = banco
+    .prepare("SELECT id FROM usuarios WHERE id = ?")
+    .get(usuarioId);
+
+  if (!usuario) {
+    const erro = new Error("Usuario nao encontrado.");
+    erro.status = 404;
+    throw erro;
+  }
+
+  banco.exec("BEGIN");
+
+  try {
+    const funcionariosConta = banco
+      .prepare("SELECT id FROM funcionarios WHERE owner_id = ?")
+      .all(usuarioId)
+      .map((funcionario) => String(funcionario.id));
+
+    funcionariosConta.forEach((funcionarioId) => {
+      banco
+        .prepare("DELETE FROM prestador_sessoes WHERE funcionario_id = ?")
+        .run(funcionarioId);
+      banco
+        .prepare("DELETE FROM prestador_acessos WHERE funcionario_id = ?")
+        .run(funcionarioId);
+    });
+
+    banco.prepare("DELETE FROM tarefas WHERE owner_id = ?").run(usuarioId);
+    banco.prepare("DELETE FROM apartamentos WHERE owner_id = ?").run(usuarioId);
+    banco.prepare("DELETE FROM funcionarios WHERE owner_id = ?").run(usuarioId);
+    banco.prepare("DELETE FROM usuarios WHERE id = ?").run(usuarioId);
+
+    banco.exec("COMMIT");
+  } catch (erro) {
+    banco.exec("ROLLBACK");
+    throw erro;
+  }
+}
+
 async function criarAcessoPrestador(dados) {
   await garantirBanco();
 
@@ -795,7 +845,7 @@ async function concluirTarefaPrestador(dados) {
 function enviarJson(resposta, status, corpo) {
   resposta.writeHead(status, {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Content-Type": "application/json; charset=utf-8",
   });
@@ -918,6 +968,23 @@ const servidor = createServer(async (requisicao, resposta) => {
     } catch (erro) {
       enviarJson(resposta, erro.status || 500, {
         erro: erro.message || "Nao foi possivel entrar.",
+      });
+    }
+    return;
+  }
+
+  if (requisicao.url?.startsWith("/api/auth/account")) {
+    try {
+      if (requisicao.method !== "DELETE") {
+        enviarJson(resposta, 405, { erro: "Metodo nao permitido." });
+        return;
+      }
+
+      await excluirContaUsuario(JSON.parse(await lerCorpo(requisicao)));
+      enviarJson(resposta, 200, { ok: true });
+    } catch (erro) {
+      enviarJson(resposta, erro.status || 500, {
+        erro: erro.message || "Nao foi possivel apagar a conta.",
       });
     }
     return;

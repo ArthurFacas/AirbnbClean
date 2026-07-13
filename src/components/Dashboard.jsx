@@ -130,6 +130,7 @@ function Dashboard({
   funcionarioTotal,
   funcionarios,
   usuario,
+  onExcluirConta,
   onSair,
   onAtribuirFuncionario,
   onAtualizarDados,
@@ -158,6 +159,23 @@ function Dashboard({
     return path === "/dashboard"
       ? location.pathname === path
       : location.pathname.startsWith(path);
+  }
+
+  async function confirmarExclusaoConta() {
+    const confirmou = window.confirm(
+      "Tem certeza que deseja apagar sua conta? Todos os apartamentos, prestadores e tarefas desta conta serao removidos.",
+    );
+
+    if (!confirmou) {
+      return;
+    }
+
+    try {
+      await onExcluirConta();
+      navigate("/");
+    } catch (erro) {
+      window.alert(erro.message || "Nao foi possivel apagar a conta.");
+    }
   }
 
   return (
@@ -193,6 +211,15 @@ function Dashboard({
         >
           <span aria-hidden="true">SA</span>
           Sair
+        </button>
+
+        <button
+          className="sidebar-delete-account"
+          onClick={confirmarExclusaoConta}
+          type="button"
+        >
+          <span aria-hidden="true">EX</span>
+          Apagar conta
         </button>
       </aside>
 

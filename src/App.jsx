@@ -431,6 +431,32 @@ function App() {
     setUsuarioLogado(null);
   }
 
+  async function excluirConta() {
+    if (!usuarioLogado?.id) {
+      return;
+    }
+
+    const resposta = await fetch("/api/auth/account", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        usuarioId: usuarioLogado.id,
+      }),
+    });
+    const dados = await resposta.json();
+
+    if (!resposta.ok) {
+      throw new Error(dados.erro || "Nao foi possivel apagar a conta.");
+    }
+
+    setFuncionarios([]);
+    setApartamentos([]);
+    setTarefas([]);
+    setUsuarioLogado(null);
+  }
+
   async function atualizarDados() {
     if (!usuarioLogado?.id) {
       return;
@@ -507,6 +533,7 @@ function App() {
               funcionarioTotal={funcionarios.length}
               funcionarios={funcionarios}
               usuario={usuarioLogado}
+              onExcluirConta={excluirConta}
               onSair={sair}
               onAtribuirFuncionario={atribuirFuncionarioTarefa}
               onAtualizarDados={atualizarDados}
