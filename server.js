@@ -1,5 +1,10 @@
 import { createServer } from "node:http";
-import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  pbkdf2Sync,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import path from "node:path";
@@ -9,7 +14,8 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3001);
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
-const DB_FILE = process.env.DATABASE_FILE || path.join(DATA_DIR, "database.sqlite");
+const DB_FILE =
+  process.env.DATABASE_FILE || path.join(DATA_DIR, "database.sqlite");
 const DIST_DIR = path.join(__dirname, "dist");
 
 const tipos = {
@@ -138,7 +144,9 @@ function garantirColuna(tabela, coluna, tipo) {
 }
 
 function obterDonoPadrao() {
-  const usuario = banco.prepare("SELECT id FROM usuarios ORDER BY id LIMIT 1").get();
+  const usuario = banco
+    .prepare("SELECT id FROM usuarios ORDER BY id LIMIT 1")
+    .get();
   return usuario?.id || 1;
 }
 
@@ -234,7 +242,9 @@ async function salvarEstado(estado, ownerId) {
   try {
     const tarefasPersistidas = new Map(
       banco
-        .prepare("SELECT id, status, concluida_em FROM tarefas WHERE owner_id = ?")
+        .prepare(
+          "SELECT id, status, concluida_em FROM tarefas WHERE owner_id = ?",
+        )
         .all(donoId)
         .map((tarefa) => [String(tarefa.id), tarefa]),
     );
@@ -499,7 +509,9 @@ async function obterStatusAcessoPrestador(funcionarioId) {
   }
 
   const acesso = banco
-    .prepare("SELECT funcionario_id FROM prestador_acessos WHERE funcionario_id = ?")
+    .prepare(
+      "SELECT funcionario_id FROM prestador_acessos WHERE funcionario_id = ?",
+    )
     .get(String(prestador.id));
 
   return {
@@ -567,7 +579,9 @@ function validarSessaoPrestador(funcionarioId, token) {
 async function criarUsuario(dados) {
   await garantirBanco();
 
-  const email = String(dados.email || "").trim().toLowerCase();
+  const email = String(dados.email || "")
+    .trim()
+    .toLowerCase();
   const confirmarEmail = String(dados.confirmarEmail || email)
     .trim()
     .toLowerCase();
@@ -577,7 +591,12 @@ async function criarUsuario(dados) {
   const senha = String(dados.senha || "");
   const confirmarSenha = String(dados.confirmarSenha || senha);
 
-  if (!nome || !validarEmail(email) || telefone.length < 10 || cpf.length !== 11) {
+  if (
+    !nome ||
+    !validarEmail(email) ||
+    telefone.length < 10 ||
+    cpf.length !== 11
+  ) {
     const erro = new Error("Dados de cadastro invalidos.");
     erro.status = 400;
     throw erro;
@@ -631,7 +650,9 @@ async function criarUsuario(dados) {
 async function autenticarUsuario(dados) {
   await garantirBanco();
 
-  const email = String(dados.email || "").trim().toLowerCase();
+  const email = String(dados.email || "")
+    .trim()
+    .toLowerCase();
   const senha = String(dados.senha || "");
 
   if (!validarEmail(email) || !senha) {
@@ -648,7 +669,10 @@ async function autenticarUsuario(dados) {
     )
     .get(email);
 
-  if (!usuario || !validarSenha(senha, usuario.senha_hash, usuario.senha_salt)) {
+  if (
+    !usuario ||
+    !validarSenha(senha, usuario.senha_hash, usuario.senha_salt)
+  ) {
     const erro = new Error("Email ou senha incorretos.");
     erro.status = 401;
     throw erro;
@@ -711,7 +735,9 @@ async function criarAcessoPrestador(dados) {
   await garantirBanco();
 
   const funcionarioId = String(dados.funcionarioId || "");
-  const email = String(dados.email || "").trim().toLowerCase();
+  const email = String(dados.email || "")
+    .trim()
+    .toLowerCase();
   const senha = String(dados.senha || "");
   const confirmarSenha = String(dados.confirmarSenha || senha);
   const prestador = await buscarPrestador(funcionarioId);
@@ -722,7 +748,12 @@ async function criarAcessoPrestador(dados) {
     throw erro;
   }
 
-  if (email !== String(prestador.email || "").trim().toLowerCase()) {
+  if (
+    email !==
+    String(prestador.email || "")
+      .trim()
+      .toLowerCase()
+  ) {
     const erro = new Error("Use o email cadastrado pelo responsavel.");
     erro.status = 400;
     throw erro;
@@ -741,7 +772,9 @@ async function criarAcessoPrestador(dados) {
   }
 
   const acessoExistente = banco
-    .prepare("SELECT funcionario_id FROM prestador_acessos WHERE funcionario_id = ?")
+    .prepare(
+      "SELECT funcionario_id FROM prestador_acessos WHERE funcionario_id = ?",
+    )
     .get(String(prestador.id));
 
   if (acessoExistente) {
@@ -765,7 +798,9 @@ async function autenticarPrestador(dados) {
   await garantirBanco();
 
   const funcionarioId = String(dados.funcionarioId || "");
-  const email = String(dados.email || "").trim().toLowerCase();
+  const email = String(dados.email || "")
+    .trim()
+    .toLowerCase();
   const senha = String(dados.senha || "");
   const prestador = await buscarPrestador(funcionarioId);
 
@@ -785,7 +820,10 @@ async function autenticarPrestador(dados) {
 
   if (
     !acesso ||
-    email !== String(acesso.email || "").trim().toLowerCase() ||
+    email !==
+      String(acesso.email || "")
+        .trim()
+        .toLowerCase() ||
     !validarSenha(senha, acesso.senha_hash, acesso.senha_salt)
   ) {
     const erro = new Error("Email ou senha incorretos.");
@@ -852,6 +890,21 @@ function enviarJson(resposta, status, corpo) {
   resposta.end(JSON.stringify(corpo));
 }
 
+function enviarTexto(
+  resposta,
+  status,
+  texto,
+  tipo = "text/plain; charset=utf-8",
+) {
+  resposta.writeHead(status, {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Content-Type": tipo,
+  });
+  resposta.end(texto);
+}
+
 function lerCorpo(requisicao) {
   return new Promise((resolve, reject) => {
     let corpo = "";
@@ -885,7 +938,8 @@ async function servirArquivo(requisicao, resposta) {
   try {
     await stat(arquivo);
     resposta.writeHead(200, {
-      "Content-Type": tipos[path.extname(arquivo)] || "application/octet-stream",
+      "Content-Type":
+        tipos[path.extname(arquivo)] || "application/octet-stream",
     });
     createReadStream(arquivo).pipe(resposta);
   } catch {
@@ -897,6 +951,48 @@ async function servirArquivo(requisicao, resposta) {
 const servidor = createServer(async (requisicao, resposta) => {
   if (requisicao.method === "OPTIONS") {
     enviarJson(resposta, 204, {});
+    return;
+  }
+
+  if (requisicao.url?.startsWith("/api/ical")) {
+    try {
+      if (requisicao.method !== "GET") {
+        enviarJson(resposta, 405, { erro: "Metodo nao permitido." });
+        return;
+      }
+
+      const url = new URL(requisicao.url, `http://${requisicao.headers.host}`);
+      const urlIcal = url.searchParams.get("url");
+
+      if (!urlIcal || !/^https:\/\/(www\.)?airbnb\./i.test(urlIcal)) {
+        enviarJson(resposta, 400, { erro: "URL iCal invalida." });
+        return;
+      }
+
+      const respostaIcal = await fetch(urlIcal, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (compatible; CleanHost/1.0; +https://localhost)",
+          Accept: "text/calendar,text/plain,*/*",
+        },
+      });
+
+      if (!respostaIcal.ok) {
+        enviarJson(resposta, respostaIcal.status, {
+          erro: `Airbnb retornou HTTP ${respostaIcal.status}.`,
+        });
+        return;
+      }
+
+      enviarTexto(
+        resposta,
+        200,
+        await respostaIcal.text(),
+        "text/calendar; charset=utf-8",
+      );
+    } catch {
+      enviarJson(resposta, 500, { erro: "Nao foi possivel ler o iCal." });
+    }
     return;
   }
 
@@ -914,7 +1010,9 @@ const servidor = createServer(async (requisicao, resposta) => {
 
       if (requisicao.method === "PUT") {
         const corpo = JSON.parse(await lerCorpo(requisicao));
-        const donoId = normalizarOwnerId(corpo.ownerId || corpo.usuarioId || ownerId);
+        const donoId = normalizarOwnerId(
+          corpo.ownerId || corpo.usuarioId || ownerId,
+        );
         const estado = {
           funcionarios: Array.isArray(corpo.funcionarios)
             ? corpo.funcionarios
@@ -944,7 +1042,9 @@ const servidor = createServer(async (requisicao, resposta) => {
         return;
       }
 
-      const usuario = await criarUsuario(JSON.parse(await lerCorpo(requisicao)));
+      const usuario = await criarUsuario(
+        JSON.parse(await lerCorpo(requisicao)),
+      );
       enviarJson(resposta, 201, { usuario });
     } catch (erro) {
       enviarJson(resposta, erro.status || 500, {
@@ -1023,10 +1123,14 @@ const servidor = createServer(async (requisicao, resposta) => {
       }
 
       const funcionarioId = url.searchParams.get("funcionarioId");
-      const token = url.searchParams.get("token") || requisicao.headers.authorization?.replace(/^Bearer\s+/i, "");
+      const token =
+        url.searchParams.get("token") ||
+        requisicao.headers.authorization?.replace(/^Bearer\s+/i, "");
 
       if (!validarSessaoPrestador(funcionarioId, token)) {
-        enviarJson(resposta, 401, { erro: "Acesso do prestador nao autenticado." });
+        enviarJson(resposta, 401, {
+          erro: "Acesso do prestador nao autenticado.",
+        });
         return;
       }
 

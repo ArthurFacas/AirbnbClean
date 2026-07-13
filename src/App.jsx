@@ -426,11 +426,17 @@ function App() {
   }
 
   function atualizarTarefa(tarefaId, campos) {
-    setTarefas((tarefasAtuais) =>
-      tarefasAtuais.map((tarefa) =>
-        tarefa.id === tarefaId ? { ...tarefa, ...campos } : tarefa,
-      ),
+    const tarefasAtualizadas = tarefas.map((tarefa) =>
+      String(tarefa.id) === String(tarefaId) ? { ...tarefa, ...campos } : tarefa,
     );
+
+    setTarefas(tarefasAtualizadas);
+
+    salvarEstadoAtualizado({
+      funcionarios,
+      apartamentos,
+      tarefas: tarefasAtualizadas,
+    }).catch(() => {});
   }
 
   function concluirTarefa(tarefaId) {

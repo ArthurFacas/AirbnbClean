@@ -114,6 +114,7 @@ function parsearTodosEventosIcal(texto) {
 export async function buscarReservasIcal(codigoIcal) {
   const urlIcal = montarUrlIcal(codigoIcal);
   const urls = [
+    `/api/ical?url=${encodeURIComponent(urlIcal)}`,
     urlIcal,
     `https://api.allorigins.win/raw?url=${encodeURIComponent(urlIcal)}`,
     `https://corsproxy.io/?${encodeURIComponent(urlIcal)}`,
