@@ -133,15 +133,11 @@ export async function buscarReservasIcal(codigoIcal) {
       const calendario = parsearTodosEventosIcal(texto);
       const reservas = calendario.reservasFuturas;
 
-      if (!reservas.length) {
-        throw new Error("Nenhuma reserva futura encontrada no iCal.");
-      }
-
       return {
         urlIcal,
         reservas,
         todasReservas: calendario.reservas,
-        proximaReserva: reservas[0],
+        proximaReserva: reservas[0] || {},
       };
     } catch (erro) {
       ultimoErro = erro;

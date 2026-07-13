@@ -67,6 +67,9 @@ function TarefaCard({
 }) {
   const funcionario = encontrarFuncionario(funcionarios, tarefa.funcionarioId);
   const urgencia = calcularUrgencia(tarefa);
+  const urgenciaVisual = tarefa.prioridade
+    ? { ...urgencia, chave: "vermelha", classe: "urgency-red", label: "Prioridade urgente" }
+    : urgencia;
   const [editando, setEditando] = useState(false);
   const deveMostrarSelecao = !funcionario || editando;
   const funcionariosOrdenados = [...funcionarios].sort((funcionarioA, funcionarioB) => {
@@ -96,19 +99,20 @@ function TarefaCard({
   }
 
   return (
-    <div className={`info-card task-card ${urgencia.classe}`}>
+    <div className={`info-card task-card ${urgenciaVisual.classe}`}>
       <div className="task-card-top">
         <span className="status-chip">Pendente</span>
+        {tarefa.prioridade && <span className="priority-chip">Prioridade</span>}
         <span
-          className={`urgency-pill ${urgencia.classe}`}
-          aria-label={urgencia.label}
-          title={urgencia.label}
+          className={`urgency-pill ${urgenciaVisual.classe}`}
+          aria-label={urgenciaVisual.label}
+          title={urgenciaVisual.label}
         >
           <span className="urgency-dot"></span>
           <strong>
             {tarefa.prioridade
               ? "Urgente"
-              : urgencia.chave === "amarela"
+              : urgenciaVisual.chave === "amarela"
                 ? "Atencao"
                 : "Normal"}
           </strong>

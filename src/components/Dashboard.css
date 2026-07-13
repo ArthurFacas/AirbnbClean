@@ -1969,6 +1969,31 @@
   box-shadow: 0 16px 38px rgba(23, 32, 51, 0.08);
 }
 
+.completed-calendar-panel {
+  gap: 10px;
+  max-width: 760px;
+  padding: 14px;
+}
+
+.completed-calendar-panel .provider-calendar-header strong {
+  font-size: 18px;
+}
+
+.completed-calendar-panel .provider-calendar-day {
+  min-height: 48px;
+  border-radius: 11px;
+  font-size: 13px;
+  padding: 6px;
+}
+
+.completed-calendar-panel .provider-calendar-day strong {
+  right: 4px;
+  bottom: 4px;
+  min-width: 18px;
+  height: 18px;
+  font-size: 10px;
+}
+
 .provider-calendar-header {
   display: flex;
   align-items: center;
@@ -2097,6 +2122,10 @@
   border-top-color: #f59e0b;
 }
 
+.provider-task-card.urgency-green {
+  border-top-color: #10b981;
+}
+
 .provider-task-card.completed,
 .task-card.completed {
   border-top-color: #64748b;
@@ -2133,6 +2162,21 @@
   padding: 6px 8px;
 }
 
+.provider-task-top .provider-urgency-label.urgency-red {
+  background: #ffe4e6;
+  color: #be123c;
+}
+
+.provider-task-top .provider-urgency-label.urgency-yellow {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.provider-task-top .provider-urgency-label.urgency-green {
+  background: #d1fae5;
+  color: #047857;
+}
+
 .provider-task-top i {
   width: 12px;
   height: 12px;
@@ -2146,6 +2190,10 @@
 
 .provider-task-card.urgency-yellow .provider-task-top i {
   background: #f59e0b;
+}
+
+.provider-task-card.urgency-green .provider-task-top i {
+  background: #10b981;
 }
 
 .provider-task-card p {

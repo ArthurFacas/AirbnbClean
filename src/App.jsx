@@ -42,6 +42,14 @@ function atribuirTarefasAoPrestadorUnico(tarefasAtuais, funcionariosAtuais) {
   );
 }
 
+function obterChaveReserva(reserva) {
+  return [
+    String(reserva.checkin || "").slice(0, 10),
+    String(reserva.checkout || "").slice(0, 10),
+    String(reserva.resumo || "").trim(),
+  ].join("|");
+}
+
 function App() {
   const [usuarioLogado, setUsuarioLogado] = useState(() => {
     try {
@@ -208,6 +216,8 @@ function App() {
     apartamentoId,
     reservas,
     reservasBase = reservas,
+    tarefasExistentes = [],
+    funcionariosBase = funcionarios,
   ) {
     const datasCheckin = new Set(
       reservasBase
@@ -218,25 +228,127 @@ function App() {
     return reservas.map((reserva, index) => {
       const dataCheckout = obterDataReserva(reserva.checkout);
       const temCheckinNoMesmoDia = datasCheckin.has(dataCheckout);
+      const chaveReserva = obterChaveReserva(reserva);
+      const tarefaExistente = tarefasExistentes.find((tarefa) => {
+        const chaveTarefa = tarefa.icalKey || tarefa.chaveReserva;
+
+        return chaveTarefa
+          ? chaveTarefa === chaveReserva
+          : obterDataReserva(tarefa.checkout) === dataCheckout;
+      });
+      let tarefaId = tarefaExistente?.id || apartamentoId * 1000 + index + 1;
+
+      while (
+        !tarefaExistente &&
+        tarefasExistentes.some((tarefa) => String(tarefa.id) === String(tarefaId))
+      ) {
+        tarefaId += 1000;
+      }
 
       return {
-        id: apartamentoId * 1000 + index + 1,
+        id: tarefaId,
         apartamento: apartamento.numero,
         bairroApartamento: apartamento.Bairro || "",
         descricao: reserva.resumo || "Limpeza apos checkout Airbnb",
         checkin: obterDataReserva(reserva.checkin),
         checkout: dataCheckout,
         horaCheckout: apartamento.horaCheckout || "11:00",
-        status: "Pendente",
-        funcionarioId: funcionarios.length === 1 ? funcionarios[0].id : "",
+        status: tarefaExistente?.status || "Pendente",
+        funcionarioId:
+          tarefaExistente?.funcionarioId ||
+          (funcionariosBase.length === 1 ? funcionariosBase[0].id : ""),
         origem: "Airbnb iCal",
         apartamentoId,
+        icalKey: chaveReserva,
         prioridade: temCheckinNoMesmoDia,
         motivoPrioridade: temCheckinNoMesmoDia
           ? "Checkout e check-in no mesmo dia"
           : "",
+        observacaoPrestador: tarefaExistente?.observacaoPrestador || "",
+        concluidaEm: tarefaExistente?.concluidaEm || "",
       };
     });
+  }
+
+  async function sincronizarApartamentosIcal(estadoBase) {
+    const apartamentosComIcal = estadoBase.apartamentos.filter(
+      (apartamento) => apartamento.ICALL || apartamento.ical,
+    );
+
+    if (!apartamentosComIcal.length) {
+      return estadoBase;
+    }
+
+    let apartamentosAtualizados = estadoBase.apartamentos;
+    let tarefasAtualizadas = estadoBase.tarefas;
+
+    for (const apartamento of apartamentosComIcal) {
+      const calendario = await buscarReservasIcal(apartamento.ICALL || apartamento.ical);
+      const reservas = calendario?.reservas || [];
+      const apartamentoAtualizado = {
+        ...apartamento,
+        ICALL: calendario.urlIcal,
+        reservas,
+        dataReserva: calendario.proximaReserva?.checkin || "",
+        checkout: calendario.proximaReserva?.checkout || "",
+        horaCheckout: apartamento.horaCheckout || "11:00",
+      };
+      const tarefasDoApartamento = tarefasAtualizadas.filter(
+        (tarefa) => String(tarefa.apartamentoId) === String(apartamento.id),
+      );
+      const novasChaves = new Set(reservas.map(obterChaveReserva));
+      const tarefasRecriadas = montarTarefasIcal(
+        apartamentoAtualizado,
+        apartamento.id,
+        reservas,
+        calendario?.todasReservas || reservas,
+        tarefasDoApartamento,
+        estadoBase.funcionarios,
+      );
+      const idsRecriados = new Set(
+        tarefasRecriadas.map((tarefa) => String(tarefa.id)),
+      );
+
+      apartamentosAtualizados = apartamentosAtualizados.map((item) =>
+        String(item.id) === String(apartamento.id) ? apartamentoAtualizado : item,
+      );
+      tarefasAtualizadas = [
+        ...tarefasAtualizadas.filter((tarefa) => {
+          if (String(tarefa.apartamentoId) !== String(apartamento.id)) {
+            return true;
+          }
+
+          if (tarefa.status === "Concluida") {
+            return true;
+          }
+
+          const chaveTarefa = tarefa.icalKey || tarefa.chaveReserva;
+          const aindaExiste = chaveTarefa
+            ? novasChaves.has(chaveTarefa)
+            : reservas.some(
+                (reserva) =>
+                  obterDataReserva(reserva.checkout) ===
+                  obterDataReserva(tarefa.checkout),
+              );
+
+          return aindaExiste && !idsRecriados.has(String(tarefa.id));
+        }),
+        ...tarefasRecriadas,
+      ].sort((tarefaA, tarefaB) =>
+        String(tarefaA.checkout || "").localeCompare(
+          String(tarefaB.checkout || ""),
+        ),
+      );
+    }
+
+    return {
+      ...estadoBase,
+      apartamentos: apartamentosAtualizados,
+      tarefas: atribuirTarefasAoPrestadorUnico(
+        tarefasAtualizadas,
+        estadoBase.funcionarios,
+      ),
+    };
   }
 
   async function cadastrarApartamento(apartamento) {
@@ -250,8 +362,8 @@ function App() {
           ...apartamento,
           ICALL: calendario.urlIcal,
           reservas,
-          dataReserva: calendario.proximaReserva.checkin,
-          checkout: calendario.proximaReserva.checkout,
+          dataReserva: calendario.proximaReserva?.checkin || "",
+          checkout: calendario.proximaReserva?.checkout || "",
           horaCheckout: apartamento.horaCheckout || "11:00",
         }
       : { ...apartamento };
@@ -269,6 +381,8 @@ function App() {
           apartamentoId,
           reservas,
           calendario?.todasReservas || reservas,
+          [],
+          funcionarios,
         ),
       ]);
     }
@@ -317,12 +431,35 @@ function App() {
     setUsuarioLogado(null);
   }
 
-  function atualizarDados() {
+  async function atualizarDados() {
     if (!usuarioLogado?.id) {
-      return Promise.resolve();
+      return;
     }
 
-    return carregarEstadoUsuario(usuarioLogado.id);
+    const resposta = await fetch(
+      `/api/state?ownerId=${encodeURIComponent(usuarioLogado.id)}`,
+    );
+
+    if (!resposta.ok) {
+      throw new Error("Nao foi possivel carregar o banco.");
+    }
+
+    const estadoBanco = await resposta.json();
+    const estadoSincronizado = await sincronizarApartamentosIcal({
+      funcionarios: Array.isArray(estadoBanco.funcionarios)
+        ? estadoBanco.funcionarios
+        : [],
+      apartamentos: Array.isArray(estadoBanco.apartamentos)
+        ? estadoBanco.apartamentos
+        : [],
+      tarefas: Array.isArray(estadoBanco.tarefas) ? estadoBanco.tarefas : [],
+    });
+
+    setFuncionarios(estadoSincronizado.funcionarios);
+    setApartamentos(estadoSincronizado.apartamentos);
+    setTarefas(estadoSincronizado.tarefas);
+
+    await salvarEstadoAtualizado(estadoSincronizado);
   }
 
   return (

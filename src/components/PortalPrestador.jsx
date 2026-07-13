@@ -523,6 +523,14 @@ function PortalPrestador({
 
   function renderizarCardTarefa(tarefa, concluida = false) {
     const urgencia = calcularUrgencia(tarefa);
+    const urgenciaVisual = tarefa.prioridade
+      ? {
+          ...urgencia,
+          chave: "vermelha",
+          classe: "urgency-red",
+          label: "Prioridade urgente",
+        }
+      : urgencia;
     const responsavel =
       prestador ||
       funcionarios.find(
@@ -532,7 +540,9 @@ function PortalPrestador({
 
     return (
       <article
-        className={`provider-task-card ${concluida ? "completed" : urgencia.classe}`}
+        className={`provider-task-card ${
+          concluida ? "completed" : urgenciaVisual.classe
+        }`}
         key={tarefa.id}
       >
         <div className="provider-task-top">
@@ -540,7 +550,16 @@ function PortalPrestador({
           <div>
             {concluida && <span>Concluida</span>}
             {!concluida && tarefa.prioridade && <span>Prioridade</span>}
-            {!concluida && <i title={urgencia.label}></i>}
+            {!concluida && (
+              <span className={`provider-urgency-label ${urgenciaVisual.classe}`}>
+                {tarefa.prioridade
+                  ? "Urgente"
+                  : urgenciaVisual.chave === "amarela"
+                    ? "Atencao"
+                    : "Normal"}
+              </span>
+            )}
+            {!concluida && <i title={urgenciaVisual.label}></i>}
           </div>
         </div>
         <p>{tarefa.descricao}</p>
@@ -820,7 +839,7 @@ function PortalPrestador({
 
         {abaAtiva === "concluidas" && (
           <section className="provider-completed-section">
-            <div className="provider-calendar-panel">
+            <div className="provider-calendar-panel completed-calendar-panel">
               <div className="provider-calendar-header">
                 <strong>{formatarMes(mesCalendarioConcluidas)}</strong>
                 <input
@@ -900,18 +919,6 @@ function PortalPrestador({
                 )}
               </div>
             </div>
-
-            {tarefasConcluidas.length > 0 ? (
-              <div className="provider-task-list">
-                {tarefasConcluidas.map((tarefa) =>
-                  renderizarCardTarefa(tarefa, true),
-                )}
-              </div>
-            ) : (
-              <div className="provider-empty">
-                <p>Nenhuma tarefa concluida ainda.</p>
-              </div>
-            )}
           </section>
         )}
       </div>

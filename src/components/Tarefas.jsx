@@ -587,7 +587,7 @@ function Tarefas({
             <strong>{tarefasConcluidas.length}</strong>
           </div>
 
-          <div className="provider-calendar-panel">
+          <div className="provider-calendar-panel completed-calendar-panel">
             <div className="provider-calendar-header">
               <strong>{formatarMes(mesCalendarioConcluidas)}</strong>
               <input
@@ -692,66 +692,10 @@ function Tarefas({
               )}
             </div>
           </div>
-
-          {tarefasConcluidas.length > 0 ? (
-            <div className="list-grid">
-              {tarefasConcluidas.map((tarefa) => (
-                <div className="info-card task-card completed" key={tarefa.id}>
-                  {(() => {
-                    const responsavel = encontrarFuncionario(
-                      funcionarios,
-                      tarefa.funcionarioId,
-                    );
-
-                    return (
-                      <>
-                        <div className="task-card-top">
-                          <div className="task-card-flags">
-                            <span className="assigned-chip">Concluida</span>
-                          </div>
-                        </div>
-                        <div className="task-card-main">
-                          <span className="task-apartment-label">
-                            Apartamento
-                          </span>
-                          <h3>{tarefa.apartamento}</h3>
-                          <p>{tarefa.descricao}</p>
-                        </div>
-                        <div className="task-checkout-row">
-                          <div>
-                            <span>Checkout</span>
-                            <strong>
-                              {formatarDataCompleta(tarefa.checkout)}
-                            </strong>
-                          </div>
-                          <div>
-                            <span>Horario</span>
-                            <strong>{tarefa.horaCheckout || "11:00"}</strong>
-                          </div>
-                        </div>
-                        <div className="provider-task-done-by">
-                          <span>Feita por</span>
-                          <strong>
-                            {responsavel?.nome || "Prestador nao identificado"}
-                          </strong>
-                          <span>Concluida em</span>
-                          <strong>
-                            {formatarDataCompleta(obterDataConclusao(tarefa))}
-                          </strong>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state">Nenhuma tarefa concluida ainda.</div>
-          )}
         </div>
       )}
 
-      {tarefasPendentes.length === 0 && (
+      {visualizacao === "lista" && tarefasPendentes.length === 0 && (
         <div className="empty-state">Nenhuma tarefa pendente encontrada.</div>
       )}
     </div>
