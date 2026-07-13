@@ -189,18 +189,26 @@ function App() {
     return novoFuncionario;
   }
 
-  function excluirFuncionario(id) {
-    setFuncionarios((funcionariosAtuais) => {
-      const funcionariosAtualizados = funcionariosAtuais.filter(
-        (funcionario) => funcionario.id !== id,
-      );
+  async function excluirFuncionario(id) {
+    const funcionariosAtualizados = funcionarios.filter(
+      (funcionario) => String(funcionario.id) !== String(id),
+    );
+    const tarefasAtualizadas = atribuirTarefasAoPrestadorUnico(
+      tarefas,
+      funcionariosAtualizados,
+    );
 
-      setTarefas((tarefasAtuais) =>
-        atribuirTarefasAoPrestadorUnico(tarefasAtuais, funcionariosAtualizados),
-      );
-
-      return funcionariosAtualizados;
-    });
+    try {
+      await salvarEstadoAtualizado({
+        funcionarios: funcionariosAtualizados,
+        apartamentos,
+        tarefas: tarefasAtualizadas,
+      });
+      setFuncionarios(funcionariosAtualizados);
+      setTarefas(tarefasAtualizadas);
+    } catch (erro) {
+      window.alert(erro.message || "Nao foi possivel excluir o prestador.");
+    }
   }
 
   function obterDataReserva(valor) {
@@ -388,13 +396,25 @@ function App() {
     }
   }
 
-  function excluirApartamento(id) {
-    setApartamentos((apartamentosAtuais) =>
-      apartamentosAtuais.filter((apartamento) => apartamento.id !== id),
+  async function excluirApartamento(id) {
+    const apartamentosAtualizados = apartamentos.filter(
+      (apartamento) => String(apartamento.id) !== String(id),
     );
-    setTarefas((tarefasAtuais) =>
-      tarefasAtuais.filter((tarefa) => tarefa.apartamentoId !== id),
+    const tarefasAtualizadas = tarefas.filter(
+      (tarefa) => String(tarefa.apartamentoId) !== String(id),
     );
+
+    try {
+      await salvarEstadoAtualizado({
+        funcionarios,
+        apartamentos: apartamentosAtualizados,
+        tarefas: tarefasAtualizadas,
+      });
+      setApartamentos(apartamentosAtualizados);
+      setTarefas(tarefasAtualizadas);
+    } catch (erro) {
+      window.alert(erro.message || "Nao foi possivel excluir o apartamento.");
+    }
   }
 
   function atribuirFuncionarioTarefa(tarefaId, funcionarioId) {
