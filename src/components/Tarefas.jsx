@@ -198,16 +198,16 @@ function Tarefas({
   const [dataSelecionada, setDataSelecionada] = useState("");
   const [dataAbertaPeloCalendario, setDataAbertaPeloCalendario] =
     useState(false);
+  const [atualizandoDados, setAtualizandoDados] = useState(false);
   const [mesCalendario, setMesCalendario] = useState(() =>
-    obterMesInput(obterHojeInput()),
-  );
-  const [mesCalendarioConcluidas, setMesCalendarioConcluidas] = useState(() =>
     obterMesInput(obterHojeInput()),
   );
   const [mesRetornoCalendario, setMesRetornoCalendario] = useState(() =>
     obterMesInput(obterHojeInput()),
   );
   const [dataConcluidaSelecionada, setDataConcluidaSelecionada] = useState("");
+  const [dataInicioPeriodo, setDataInicioPeriodo] = useState(obterHojeInput());
+  const [dataFimPeriodo, setDataFimPeriodo] = useState("");
   const dataAmanha = obterAmanha();
   const tarefasPendentes = tarefas
     .filter((tarefa) => tarefa.status === "Pendente")
@@ -225,16 +225,28 @@ function Tarefas({
     (tarefa) => tarefa.prioridade,
   ).length;
   const diasDoCalendario = montarDiasDoMes(mesCalendario, tarefasPendentes);
-  const diasConcluidasDoCalendario = montarDiasDoMes(
-    mesCalendarioConcluidas,
-    tarefasConcluidas,
-    obterDataConclusao,
-  );
   const tarefasDaDataSelecionada = dataSelecionada
     ? tarefasPendentes.filter(
         (tarefa) => obterDataCheckout(tarefa) === dataSelecionada,
       )
     : [];
+  const tarefasDoPeriodoSelecionado = tarefasPendentes.filter((tarefa) => {
+    const dataCheckout = obterDataCheckout(tarefa);
+
+    if (!dataCheckout) {
+      return false;
+    }
+
+    if (dataInicioPeriodo && dataCheckout < dataInicioPeriodo) {
+      return false;
+    }
+
+    if (dataFimPeriodo && dataCheckout > dataFimPeriodo) {
+      return false;
+    }
+
+    return Boolean(dataInicioPeriodo || dataFimPeriodo);
+  });
   const tarefasConcluidasDaDataSelecionada = dataConcluidaSelecionada
     ? tarefasConcluidas.filter(
         (tarefa) => obterDataConclusao(tarefa) === dataConcluidaSelecionada,
@@ -279,6 +291,20 @@ function Tarefas({
     setMesCalendario(mesRetornoCalendario);
     setDataAbertaPeloCalendario(false);
     setVisualizacao("calendario");
+  }
+
+  async function atualizarDadosComBloqueio() {
+    if (atualizandoDados) {
+      return;
+    }
+
+    setAtualizandoDados(true);
+
+    try {
+      await onAtualizarDados();
+    } finally {
+      setAtualizandoDados(false);
+    }
   }
 
   return (
@@ -336,9 +362,14 @@ function Tarefas({
           <button
             className="task-refresh-button"
             type="button"
-            onClick={onAtualizarDados}
+            disabled={atualizandoDados}
+            onClick={() => {
+              atualizarDadosComBloqueio().catch((erro) => {
+                window.alert(erro.message || "Nao foi possivel atualizar.");
+              });
+            }}
           >
-            Atualizar
+            {atualizandoDados ? "Atualizando..." : "Atualizar"}
           </button>
         </div>
       </div>
@@ -431,19 +462,45 @@ function Tarefas({
                 value={dataSelecionada}
                 onChange={(event) => setDataSelecionada(event.target.value)}
               />
+              <label htmlFor="data-inicio-periodo">De hoje ate uma data</label>
+              <div className="date-range-controls">
+                <input
+                  id="data-inicio-periodo"
+                  type="date"
+                  value={dataInicioPeriodo}
+                  onChange={(event) => setDataInicioPeriodo(event.target.value)}
+                />
+                <input
+                  aria-label="Data final do periodo"
+                  type="date"
+                  value={dataFimPeriodo}
+                  onChange={(event) => setDataFimPeriodo(event.target.value)}
+                />
+              </div>
               {dataSelecionada && (
                 <strong>
                   {tarefasDaDataSelecionada.length} tarefa(s) em{" "}
                   {formatarDataCompleta(dataSelecionada)}
                 </strong>
               )}
+              {!dataSelecionada && (dataInicioPeriodo || dataFimPeriodo) && (
+                <strong>
+                  {tarefasDoPeriodoSelecionado.length} tarefa(s) no periodo
+                </strong>
+              )}
             </div>
           )}
 
-          {dataSelecionada ? (
-            tarefasDaDataSelecionada.length ? (
+          {dataSelecionada || dataInicioPeriodo || dataFimPeriodo ? (
+            (dataSelecionada
+              ? tarefasDaDataSelecionada
+              : tarefasDoPeriodoSelecionado
+            ).length ? (
               <div className="list-grid">
-                {tarefasDaDataSelecionada.map((tarefa) => (
+                {(dataSelecionada
+                  ? tarefasDaDataSelecionada
+                  : tarefasDoPeriodoSelecionado
+                ).map((tarefa) => (
                   <TarefaCard
                     key={tarefa.id}
                     funcionarios={funcionarios}
@@ -587,67 +644,46 @@ function Tarefas({
             <strong>{tarefasConcluidas.length}</strong>
           </div>
 
-          <div className="provider-calendar-panel completed-calendar-panel">
+          <div className="provider-calendar-panel completed-calendar-panel compact-filter">
             <div className="provider-calendar-header">
-              <strong>{formatarMes(mesCalendarioConcluidas)}</strong>
+              <strong>
+                {dataConcluidaSelecionada
+                  ? formatarDataCompleta(dataConcluidaSelecionada)
+                  : "Todas as concluidas"}
+              </strong>
               <input
-                aria-label="Escolher mes de concluidas"
-                type="month"
-                value={mesCalendarioConcluidas}
-                onChange={(event) => {
-                  setMesCalendarioConcluidas(event.target.value);
-                  setDataConcluidaSelecionada("");
-                }}
+                aria-label="Filtrar concluidas por data"
+                type="date"
+                value={dataConcluidaSelecionada}
+                onChange={(event) =>
+                  setDataConcluidaSelecionada(event.target.value)
+                }
               />
             </div>
-
-            <div className="provider-calendar-weekdays">
-              {["D", "S", "T", "Q", "Q", "S", "S"].map((dia, index) => (
-                <span key={`${dia}-${index}`}>{dia}</span>
-              ))}
-            </div>
-
-            <div className="provider-calendar-grid">
-              {diasConcluidasDoCalendario.map((dia, index) =>
-                dia ? (
-                  <button
-                    key={dia.data}
-                    type="button"
-                    className={`provider-calendar-day ${
-                      dia.tarefas.length ? "has-tasks" : ""
-                    } ${dataConcluidaSelecionada === dia.data ? "active" : ""}`}
-                    onClick={() => setDataConcluidaSelecionada(dia.data)}
-                  >
-                    <span>{dia.dia}</span>
-                    {dia.tarefas.length > 0 && (
-                      <strong>{dia.tarefas.length}</strong>
-                    )}
-                  </button>
-                ) : (
-                  <div
-                    className="provider-calendar-day empty"
-                    key={`master-done-empty-${index}`}
-                  />
-                ),
-              )}
-            </div>
-
             <div className="provider-calendar-results">
               <div className="provider-calendar-results-header">
                 <strong>
                   {dataConcluidaSelecionada
                     ? formatarDataCompleta(dataConcluidaSelecionada)
-                    : "Escolha uma data concluida"}
+                    : "Lista em ordem normal"}
                 </strong>
-                {dataConcluidaSelecionada && (
-                  <span>{tarefasConcluidasDaDataSelecionada.length} tarefa(s)</span>
-                )}
+                <span>
+                  {(dataConcluidaSelecionada
+                    ? tarefasConcluidasDaDataSelecionada
+                    : tarefasConcluidas
+                  ).length} tarefa(s)
+                </span>
               </div>
 
-              {dataConcluidaSelecionada ? (
-                tarefasConcluidasDaDataSelecionada.length ? (
+              {(dataConcluidaSelecionada
+                ? tarefasConcluidasDaDataSelecionada
+                : tarefasConcluidas
+              ).length ? (
                   <div className="list-grid">
-                    {tarefasConcluidasDaDataSelecionada.map((tarefa) => {
+                    {(dataConcluidaSelecionada
+                      ? tarefasConcluidasDaDataSelecionada
+                      : tarefasConcluidas
+                    ).map((tarefa) => {
                       const responsavel = encontrarFuncionario(
                         funcionarios,
                         tarefa.funcionarioId,
@@ -680,14 +716,9 @@ function Tarefas({
                       );
                     })}
                   </div>
-                ) : (
-                  <div className="provider-empty compact">
-                    <p>Nenhuma tarefa concluida nessa data.</p>
-                  </div>
-                )
               ) : (
                 <div className="provider-empty compact">
-                  <p>Toque em um dia marcado para ver as concluidas.</p>
+                  <p>Nenhuma tarefa concluida encontrada.</p>
                 </div>
               )}
             </div>

@@ -170,7 +170,7 @@ function removerTarefasConcluidasExpiradas() {
       `DELETE FROM tarefas
        WHERE status = 'Concluida'
          AND concluida_em IS NOT NULL
-         AND datetime(concluida_em) < datetime('now', '-1 year')`,
+         AND datetime(concluida_em) < datetime('now', '-30 days')`,
     )
     .run();
 }
@@ -182,6 +182,7 @@ function normalizarOwnerId(valor) {
 
 async function carregarEstado(ownerId) {
   await garantirBanco();
+  removerTarefasConcluidasExpiradas();
 
   const donoId = normalizarOwnerId(ownerId);
 
@@ -197,7 +198,8 @@ async function carregarEstado(ownerId) {
          WHERE owner_id = ?
          ORDER BY nome COLLATE NOCASE`,
       )
-      .all(donoId),
+      .all(donoId)
+      .map(mapearFuncionarioDoBanco),
     apartamentos: banco
       .prepare(
         `SELECT id, numero, bairro, rua, predio, andar, bloco, ical,
@@ -228,6 +230,7 @@ async function salvarEstado(estado, ownerId) {
   if (!banco) {
     await garantirBanco();
   }
+  removerTarefasConcluidasExpiradas();
 
   const donoId = normalizarOwnerId(ownerId);
 
@@ -287,7 +290,7 @@ async function salvarEstado(estado, ownerId) {
         funcionario.nascimento || "",
         funcionario.email || "",
         funcionario.telefone || "",
-        funcionario.cargo || "",
+        normalizarCargo(funcionario.cargo),
         funcionario.bairro || "",
       );
     });
@@ -351,6 +354,7 @@ async function salvarEstado(estado, ownerId) {
     });
 
     banco.exec("COMMIT");
+    removerTarefasConcluidasExpiradas();
   } catch (erro) {
     banco.exec("ROLLBACK");
     throw erro;
@@ -359,6 +363,14 @@ async function salvarEstado(estado, ownerId) {
 
 function normalizarArray(valor) {
   return Array.isArray(valor) ? valor : [];
+}
+
+function normalizarCargo(valor) {
+  const cargoLimpezaAntigo = ["fa", "xina"].join("");
+
+  return String(valor || "").trim().toLowerCase() === cargoLimpezaAntigo
+    ? "Limpeza"
+    : String(valor || "");
 }
 
 function normalizarEstadoPrestadorUnico(estado) {
@@ -410,6 +422,13 @@ function mapearApartamentoDoBanco(linha) {
     checkout: linha.checkout,
     horaCheckout: linha.hora_checkout,
     reservas: lerJson(linha.reservas_json, []),
+  };
+}
+
+function mapearFuncionarioDoBanco(linha) {
+  return {
+    ...linha,
+    cargo: normalizarCargo(linha.cargo),
   };
 }
 
@@ -482,7 +501,7 @@ function prestadorPublico(funcionario) {
     nome: funcionario.nome,
     email: funcionario.email,
     telefone: funcionario.telefone,
-    cargo: funcionario.cargo,
+    cargo: normalizarCargo(funcionario.cargo),
     bairro: funcionario.bairro,
   };
 }

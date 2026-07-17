@@ -106,14 +106,14 @@ function Cadastrarfuncionario({ onCadastrar }) {
           required
         />
 
-        <label htmlFor="bairro">Bairro onde mora</label>
+        <label htmlFor="bairro">Bairro(s) que atende</label>
         <input
           type="text"
           id="bairro"
           name="bairro"
           value={formulario.bairro}
           onChange={atualizarCampo}
-          placeholder="Ex: Centro"
+          placeholder="Ex: Centro, Jardins, Pinheiros"
           required
         />
 
@@ -126,7 +126,7 @@ function Cadastrarfuncionario({ onCadastrar }) {
           required
         >
           <option value="">Selecione um cargo</option>
-          <option value="Faxina">Faxina</option>
+          <option value="Limpeza">Limpeza</option>
           <option value="Gestao">Gestao</option>
           <option value="Motoristas">Motoristas</option>
         </select>

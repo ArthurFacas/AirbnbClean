@@ -34,7 +34,10 @@ function DashboardHome({
   const tarefasOrdenadas = [...tarefasPendentes].sort(
     compararTarefasPorCheckout,
   );
-  const inicialUsuario = (usuario?.nome || "U").trim().slice(0, 1).toUpperCase();
+  const inicialUsuario = (usuario?.nome || "U")
+    .trim()
+    .slice(0, 1)
+    .toUpperCase();
 
   return (
     <div className="dashboard-home">
@@ -96,7 +99,10 @@ function DashboardHome({
             <button type="button" onClick={onAtualizarDados}>
               Atualizar
             </button>
-            <button type="button" onClick={() => navigate("/dashboard/tarefas")}>
+            <button
+              type="button"
+              onClick={() => navigate("/dashboard/tarefas")}
+            >
               Ver tarefas
             </button>
           </div>
@@ -116,9 +122,7 @@ function DashboardHome({
             ))}
           </div>
         ) : (
-          <div className="empty-state">
-            Nenhuma tarefa pendente encontrada.
-          </div>
+          <div className="empty-state">Nenhuma tarefa pendente encontrada.</div>
         )}
       </section>
     </div>

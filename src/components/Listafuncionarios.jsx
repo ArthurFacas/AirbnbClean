@@ -49,7 +49,12 @@ function obterIniciais(nome) {
 }
 
 function obterValor(valor, fallback = "Nao informado") {
-  return valor ? valor : fallback;
+  const cargoLimpezaAntigo = ["fa", "xina"].join("");
+  const texto = String(valor || "");
+
+  return texto
+    ? texto.replace(new RegExp(`\\b${cargoLimpezaAntigo}\\b`, "gi"), "Limpeza")
+    : fallback;
 }
 
 function montarLinkPrestador(funcionarioId) {
@@ -150,7 +155,7 @@ function Listafuncionarios({ funcionarios, onExcluir }) {
                   <strong>{obterValor(funcionario.telefone)}</strong>
                 </div>
                 <div>
-                  <span>Bairro</span>
+                  <span>Bairro(s) que atende</span>
                   <strong>{obterValor(funcionario.bairro)}</strong>
                 </div>
                 <div>

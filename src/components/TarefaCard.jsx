@@ -51,11 +51,20 @@ function normalizarBairro(valor) {
     .toLowerCase();
 }
 
+function obterBairrosAtendidos(funcionario) {
+  return String(funcionario?.bairro || "")
+    .split(/[,;|]/)
+    .map(normalizarBairro)
+    .filter(Boolean);
+}
+
 function funcionarioNoMesmoBairro(funcionario, tarefa) {
-  const bairroFuncionario = normalizarBairro(funcionario.bairro);
   const bairroApartamento = normalizarBairro(tarefa.bairroApartamento);
 
-  return Boolean(bairroFuncionario && bairroFuncionario === bairroApartamento);
+  return Boolean(
+    bairroApartamento &&
+      obterBairrosAtendidos(funcionario).includes(bairroApartamento),
+  );
 }
 
 function TarefaCard({
@@ -67,9 +76,7 @@ function TarefaCard({
 }) {
   const funcionario = encontrarFuncionario(funcionarios, tarefa.funcionarioId);
   const urgencia = calcularUrgencia(tarefa);
-  const urgenciaVisual = tarefa.prioridade
-    ? { ...urgencia, chave: "vermelha", classe: "urgency-red", label: "Prioridade urgente" }
-    : urgencia;
+  const urgenciaVisual = urgencia;
   const [editando, setEditando] = useState(false);
   const deveMostrarSelecao = !funcionario || editando;
   const funcionariosOrdenados = [...funcionarios].sort((funcionarioA, funcionarioB) => {
@@ -102,7 +109,7 @@ function TarefaCard({
     <div className={`info-card task-card ${urgenciaVisual.classe}`}>
       <div className="task-card-top">
         <span className="status-chip">Pendente</span>
-        {tarefa.prioridade && <span className="priority-chip">Prioridade</span>}
+        {tarefa.prioridade && <span className="priority-chip">⚠ Prioridade</span>}
         <span
           className={`urgency-pill ${urgenciaVisual.classe}`}
           aria-label={urgenciaVisual.label}
@@ -110,7 +117,7 @@ function TarefaCard({
         >
           <span className="urgency-dot"></span>
           <strong>
-            {tarefa.prioridade
+            {urgenciaVisual.chave === "vermelha"
               ? "Urgente"
               : urgenciaVisual.chave === "amarela"
                 ? "Atencao"
@@ -140,7 +147,7 @@ function TarefaCard({
         <span>Responsavel</span>
         <strong className={funcionario ? "" : "unassigned"}>{responsavel}</strong>
         {funcionarioPerto && (
-          <small>Mais perto deste apartamento</small>
+          <small>Atende o bairro deste apartamento</small>
         )}
       </div>
 
@@ -162,7 +169,7 @@ function TarefaCard({
               return (
                 <option key={funcionarioAtual.id} value={funcionarioAtual.id}>
                   {funcionarioAtual.nome}
-                  {mesmoBairro ? " - mais perto" : ""}
+                  {mesmoBairro ? " - atende o bairro" : ""}
                 </option>
               );
             })}
@@ -187,6 +194,23 @@ function TarefaCard({
           {observacao && <strong>Para o prestador</strong>}
         </div>
         <p>{observacao || "Sem observacoes"}</p>
+      </div>
+
+      <div className="task-note-control">
+        <label htmlFor={`hospedes-${tarefa.id}`}>Hospedes nesta tarefa</label>
+        <input
+          id={`hospedes-${tarefa.id}`}
+          type="number"
+          min="1"
+          step="1"
+          value={tarefa.hospedes || ""}
+          onChange={(event) =>
+            onAtualizarTarefa?.(tarefa.id, {
+              hospedes: event.target.value,
+            })
+          }
+          placeholder="Quantidade de hospedes"
+        />
       </div>
 
       {onAtualizarTarefa && (

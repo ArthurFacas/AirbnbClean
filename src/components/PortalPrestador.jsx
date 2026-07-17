@@ -359,9 +359,6 @@ function PortalPrestador({
   const [mesCalendario, setMesCalendario] = useState(() =>
     obterMesInput(obterHojeInput()),
   );
-  const [mesCalendarioConcluidas, setMesCalendarioConcluidas] = useState(() =>
-    obterMesInput(obterHojeInput()),
-  );
   const [dataSelecionada, setDataSelecionada] = useState("");
   const [dataConcluidaSelecionada, setDataConcluidaSelecionada] = useState("");
   const [prestadorLogado, setPrestadorLogado] = useState(() => {
@@ -372,6 +369,7 @@ function PortalPrestador({
   const [carregandoPortal, setCarregandoPortal] = useState(true);
   const [erroPortal, setErroPortal] = useState("");
   const [atualizandoPortal, setAtualizandoPortal] = useState(false);
+  const [tarefasConcluindo, setTarefasConcluindo] = useState({});
   const prestadorLocal = funcionarios.find(
     (funcionario) => String(funcionario.id) === String(prestadorId),
   );
@@ -465,15 +463,6 @@ function PortalPrestador({
     () => montarDiasDoMes(mesCalendario, tarefasDoPrestador),
     [mesCalendario, tarefasDoPrestador],
   );
-  const diasConcluidasDoCalendario = useMemo(
-    () =>
-      montarDiasDoMes(
-        mesCalendarioConcluidas,
-        tarefasConcluidas,
-        obterDataConclusao,
-      ),
-    [mesCalendarioConcluidas, tarefasConcluidas],
-  );
   const tarefasDaDataSelecionada = dataSelecionada
     ? tarefasDoPrestador.filter(
         (tarefa) => obterDataCheckout(tarefa) === dataSelecionada,
@@ -485,52 +474,69 @@ function PortalPrestador({
       )
     : [];
   async function concluirTarefaPrestador(tarefaId) {
-    if (acessoMaster) {
-      onConcluirTarefa(tarefaId);
+    if (tarefasConcluindo[tarefaId]) {
       return;
     }
 
-    const resposta = await fetch("/api/provider/complete", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        funcionarioId: prestadorId,
-        tarefaId,
-        token: tokenPrestador,
-      }),
-    });
-    const dados = await resposta.json();
+    setTarefasConcluindo((tarefasAtuais) => ({
+      ...tarefasAtuais,
+      [tarefaId]: true,
+    }));
 
-    if (!resposta.ok) {
-      throw new Error(dados.erro || "Nao foi possivel concluir a tarefa.");
+    if (acessoMaster) {
+      try {
+        onConcluirTarefa(tarefaId);
+      } finally {
+        setTarefasConcluindo((tarefasAtuais) => ({
+          ...tarefasAtuais,
+          [tarefaId]: false,
+        }));
+      }
+      return;
     }
 
-    setTarefasRemotas((tarefasAtuais) =>
-      tarefasAtuais.map((tarefa) =>
-        String(tarefa.id) === String(tarefaId)
-          ? {
-              ...tarefa,
-              status: "Concluida",
-              concluidaEm: dados.tarefa?.concluidaEm || new Date().toISOString(),
-            }
-          : tarefa,
-      ),
-    );
-    onConcluirTarefa(tarefaId);
+    try {
+      const resposta = await fetch("/api/provider/complete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          funcionarioId: prestadorId,
+          tarefaId,
+          token: tokenPrestador,
+        }),
+      });
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(dados.erro || "Nao foi possivel concluir a tarefa.");
+      }
+
+      setTarefasRemotas((tarefasAtuais) =>
+        tarefasAtuais.map((tarefa) =>
+          String(tarefa.id) === String(tarefaId)
+            ? {
+                ...tarefa,
+                status: "Concluida",
+                concluidaEm: dados.tarefa?.concluidaEm || new Date().toISOString(),
+              }
+            : tarefa,
+        ),
+      );
+      onConcluirTarefa(tarefaId);
+    } finally {
+      setTarefasConcluindo((tarefasAtuais) => ({
+        ...tarefasAtuais,
+        [tarefaId]: false,
+      }));
+    }
   }
 
   function renderizarCardTarefa(tarefa, concluida = false) {
     const urgencia = calcularUrgencia(tarefa);
-    const urgenciaVisual = tarefa.prioridade
-      ? {
-          ...urgencia,
-          chave: "vermelha",
-          classe: "urgency-red",
-          label: "Prioridade urgente",
-        }
-      : urgencia;
+    const urgenciaVisual = urgencia;
+    const estaConcluindo = Boolean(tarefasConcluindo[tarefa.id]);
     const responsavel =
       prestador ||
       funcionarios.find(
@@ -549,10 +555,10 @@ function PortalPrestador({
           <strong>Apt {tarefa.apartamento}</strong>
           <div>
             {concluida && <span>Concluida</span>}
-            {!concluida && tarefa.prioridade && <span>Prioridade</span>}
+            {!concluida && tarefa.prioridade && <span>⚠ Prioridade</span>}
             {!concluida && (
               <span className={`provider-urgency-label ${urgenciaVisual.classe}`}>
-                {tarefa.prioridade
+                {urgenciaVisual.chave === "vermelha"
                   ? "Urgente"
                   : urgenciaVisual.chave === "amarela"
                     ? "Atencao"
@@ -570,6 +576,12 @@ function PortalPrestador({
           </strong>
         </div>
         {tarefa.bairroApartamento && <small>{tarefa.bairroApartamento}</small>}
+        {tarefa.hospedes && (
+          <div className="provider-task-meta">
+            <span>Hospedes</span>
+            <strong>{tarefa.hospedes}</strong>
+          </div>
+        )}
         {tarefa.observacaoPrestador && (
           <div className="provider-task-note">
             <span>Observacao</span>
@@ -588,6 +600,7 @@ function PortalPrestador({
           <button
             className="provider-complete-button"
             type="button"
+            disabled={estaConcluindo}
             onClick={() => {
               if (window.confirm("Tem certeza que ja terminou este servico?")) {
                 concluirTarefaPrestador(tarefa.id).catch((erroAtual) => {
@@ -596,7 +609,7 @@ function PortalPrestador({
               }
             }}
           >
-            Marcar como concluida
+            {estaConcluindo ? "Concluindo..." : "Marcar como concluida"}
           </button>
         )}
       </article>
@@ -839,82 +852,46 @@ function PortalPrestador({
 
         {abaAtiva === "concluidas" && (
           <section className="provider-completed-section">
-            <div className="provider-calendar-panel completed-calendar-panel">
+            <div className="provider-calendar-panel completed-calendar-panel compact-filter">
               <div className="provider-calendar-header">
-                <strong>{formatarMes(mesCalendarioConcluidas)}</strong>
+                <strong>Tarefas concluidas</strong>
                 <input
-                  aria-label="Escolher mes de concluidas"
-                  type="month"
-                  value={mesCalendarioConcluidas}
-                  onChange={(event) => {
-                    setMesCalendarioConcluidas(event.target.value);
-                    setDataConcluidaSelecionada("");
-                  }}
+                  aria-label="Filtrar concluidas por data"
+                  type="date"
+                  value={dataConcluidaSelecionada}
+                  onChange={(event) =>
+                    setDataConcluidaSelecionada(event.target.value)
+                  }
                 />
               </div>
-
-              <div className="provider-calendar-weekdays">
-                {["D", "S", "T", "Q", "Q", "S", "S"].map((dia, index) => (
-                  <span key={`${dia}-${index}`}>{dia}</span>
-                ))}
-              </div>
-
-              <div className="provider-calendar-grid">
-                {diasConcluidasDoCalendario.map((dia, index) =>
-                  dia ? (
-                    <button
-                      key={dia.data}
-                      type="button"
-                      className={`provider-calendar-day ${
-                        dia.tarefas.length ? "has-tasks" : ""
-                      } ${
-                        dataConcluidaSelecionada === dia.data ? "active" : ""
-                      }`}
-                      onClick={() => setDataConcluidaSelecionada(dia.data)}
-                    >
-                      <span>{dia.dia}</span>
-                      {dia.tarefas.length > 0 && (
-                        <strong>{dia.tarefas.length}</strong>
-                      )}
-                    </button>
-                  ) : (
-                    <div
-                      className="provider-calendar-day empty"
-                      key={`done-empty-${index}`}
-                    />
-                  ),
-                )}
-              </div>
-
               <div className="provider-calendar-results">
                 <div className="provider-calendar-results-header">
                   <strong>
                     {dataConcluidaSelecionada
                       ? formatarData(dataConcluidaSelecionada)
-                      : "Escolha uma data concluida"}
+                      : "Todas as concluidas"}
                   </strong>
-                  {dataConcluidaSelecionada && (
-                    <span>
-                      {tarefasConcluidasDaDataSelecionada.length} tarefa(s)
-                    </span>
-                  )}
+                  <span>
+                    {(dataConcluidaSelecionada
+                      ? tarefasConcluidasDaDataSelecionada
+                      : tarefasConcluidas
+                    ).length} tarefa(s)
+                  </span>
                 </div>
 
-                {dataConcluidaSelecionada ? (
-                  tarefasConcluidasDaDataSelecionada.length ? (
+                {(dataConcluidaSelecionada
+                  ? tarefasConcluidasDaDataSelecionada
+                  : tarefasConcluidas
+                ).length ? (
                     <div className="provider-task-list compact">
-                      {tarefasConcluidasDaDataSelecionada.map((tarefa) =>
-                        renderizarCardTarefa(tarefa, true),
-                      )}
+                      {(dataConcluidaSelecionada
+                        ? tarefasConcluidasDaDataSelecionada
+                        : tarefasConcluidas
+                      ).map((tarefa) => renderizarCardTarefa(tarefa, true))}
                     </div>
-                  ) : (
-                    <div className="provider-empty compact">
-                      <p>Nenhuma tarefa concluida nessa data.</p>
-                    </div>
-                  )
                 ) : (
                   <div className="provider-empty compact">
-                    <p>Toque em um dia marcado para ver as concluidas.</p>
+                    <p>Nenhuma tarefa concluida encontrada.</p>
                   </div>
                 )}
               </div>

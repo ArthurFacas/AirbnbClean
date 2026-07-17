@@ -10,6 +10,7 @@ const estadoInicial = {
   bloco: "",
   ICALL: "",
   horaCheckout: "",
+  hospedesMaximos: "",
 };
 
 function CadastroApartamento({ onCadastrar }) {
@@ -127,6 +128,19 @@ function CadastroApartamento({ onCadastrar }) {
           name="bloco"
           value={formulario.bloco}
           onChange={atualizarCampo}
+          required
+        />
+
+        <label htmlFor="hospedesMaximos">Quantidade maxima de hospedes</label>
+        <input
+          type="number"
+          id="hospedesMaximos"
+          name="hospedesMaximos"
+          value={formulario.hospedesMaximos}
+          onChange={atualizarCampo}
+          min="1"
+          step="1"
+          placeholder="Ex: 4"
           required
         />
 

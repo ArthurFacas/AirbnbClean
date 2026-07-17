@@ -21,25 +21,118 @@ function normalizarTelefoneWhatsapp(telefone) {
   return somenteNumeros;
 }
 
-function atribuirTarefasAoPrestadorUnico(tarefasAtuais, funcionariosAtuais) {
-  if (funcionariosAtuais.length !== 1) {
+function normalizarTextoComparacao(valor) {
+  return String(valor || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function obterBairrosAtendidos(funcionario) {
+  return String(funcionario?.bairro || "")
+    .split(/[,;|]/)
+    .map(normalizarTextoComparacao)
+    .filter(Boolean);
+}
+
+function prestadorAtendeBairro(funcionario, bairroApartamento) {
+  const bairroNormalizado = normalizarTextoComparacao(bairroApartamento);
+
+  return Boolean(
+    bairroNormalizado &&
+      obterBairrosAtendidos(funcionario).includes(bairroNormalizado),
+  );
+}
+
+function escolherPrestadorParaTarefa(tarefa, funcionariosAtuais) {
+  if (funcionariosAtuais.length === 1) {
+    return funcionariosAtuais[0]?.id || "";
+  }
+
+  const prestadoresDoBairro = funcionariosAtuais.filter((funcionario) =>
+    prestadorAtendeBairro(funcionario, tarefa.bairroApartamento),
+  );
+
+  if (!prestadoresDoBairro.length) {
+    return tarefa.funcionarioId || "";
+  }
+
+  const cargas = funcionariosAtuais.reduce((mapa, funcionario) => {
+    mapa[String(funcionario.id)] = 0;
+    return mapa;
+  }, {});
+
+  return prestadoresDoBairro
+    .sort((prestadorA, prestadorB) => {
+      const cargaA = cargas[String(prestadorA.id)] || 0;
+      const cargaB = cargas[String(prestadorB.id)] || 0;
+
+      if (cargaA !== cargaB) {
+        return cargaA - cargaB;
+      }
+
+      return String(prestadorA.nome || "").localeCompare(
+        String(prestadorB.nome || ""),
+        "pt-BR",
+      );
+    })[0].id;
+}
+
+function atribuirTarefasPorPrestador(tarefasAtuais, funcionariosAtuais) {
+  if (!funcionariosAtuais.length) {
     return tarefasAtuais;
   }
 
-  const funcionarioUnico = funcionariosAtuais[0];
-  const precisaAtribuir = tarefasAtuais.some(
-    (tarefa) => String(tarefa.funcionarioId) !== String(funcionarioUnico.id),
-  );
+  const cargas = tarefasAtuais.reduce((mapa, tarefa) => {
+    if (tarefa.funcionarioId) {
+      mapa[String(tarefa.funcionarioId)] =
+        (mapa[String(tarefa.funcionarioId)] || 0) + 1;
+    }
 
-  if (!precisaAtribuir) {
-    return tarefasAtuais;
-  }
+    return mapa;
+  }, {});
 
-  return tarefasAtuais.map((tarefa) =>
-    String(tarefa.funcionarioId) === String(funcionarioUnico.id)
-      ? tarefa
-      : { ...tarefa, funcionarioId: funcionarioUnico.id },
-  );
+  return tarefasAtuais.map((tarefa) => {
+    if (funcionariosAtuais.length === 1) {
+      return { ...tarefa, funcionarioId: funcionariosAtuais[0].id };
+    }
+
+    const funcionarioAtual = funcionariosAtuais.find(
+      (funcionario) => String(funcionario.id) === String(tarefa.funcionarioId),
+    );
+
+    if (funcionarioAtual && prestadorAtendeBairro(funcionarioAtual, tarefa.bairroApartamento)) {
+      return tarefa;
+    }
+
+    const prestadoresDoBairro = funcionariosAtuais.filter((funcionario) =>
+      prestadorAtendeBairro(funcionario, tarefa.bairroApartamento),
+    );
+
+    if (!prestadoresDoBairro.length) {
+      return tarefa;
+    }
+
+    const prestadorEscolhido = prestadoresDoBairro.sort((prestadorA, prestadorB) => {
+      const cargaA = cargas[String(prestadorA.id)] || 0;
+      const cargaB = cargas[String(prestadorB.id)] || 0;
+
+      if (cargaA !== cargaB) {
+        return cargaA - cargaB;
+      }
+
+      return String(prestadorA.nome || "").localeCompare(
+        String(prestadorB.nome || ""),
+        "pt-BR",
+      );
+    })[0];
+
+    cargas[String(prestadorEscolhido.id)] =
+      (cargas[String(prestadorEscolhido.id)] || 0) + 1;
+
+    return { ...tarefa, funcionarioId: prestadorEscolhido.id };
+  });
 }
 
 function obterChaveReserva(reserva) {
@@ -77,13 +170,20 @@ function App() {
 
     const estado = await resposta.json();
 
-    setFuncionarios(
-      Array.isArray(estado.funcionarios) ? estado.funcionarios : [],
-    );
+    const funcionariosCarregados = Array.isArray(estado.funcionarios)
+      ? estado.funcionarios
+      : [];
+    const tarefasCarregadas = Array.isArray(estado.tarefas)
+      ? estado.tarefas
+      : [];
+
+    setFuncionarios(funcionariosCarregados);
     setApartamentos(
       Array.isArray(estado.apartamentos) ? estado.apartamentos : [],
     );
-    setTarefas(Array.isArray(estado.tarefas) ? estado.tarefas : []);
+    setTarefas(
+      atribuirTarefasPorPrestador(tarefasCarregadas, funcionariosCarregados),
+    );
   }, []);
 
   useEffect(() => {
@@ -166,14 +266,20 @@ function App() {
   }
 
   async function cadastrarFuncionario(funcionario) {
+    const cargoLimpezaAntigo = ["fa", "xina"].join("");
     const novoFuncionario = {
       ...funcionario,
       id: Date.now(),
       bairro: String(funcionario.bairro || "").trim(),
+      cargo:
+        String(funcionario.cargo || "").trim().toLowerCase() ===
+        cargoLimpezaAntigo
+          ? "Limpeza"
+          : String(funcionario.cargo || "").trim(),
       telefone: normalizarTelefoneWhatsapp(funcionario.telefone),
     };
     const funcionariosAtualizados = [...funcionarios, novoFuncionario];
-    const tarefasAtualizadas = atribuirTarefasAoPrestadorUnico(
+    const tarefasAtualizadas = atribuirTarefasPorPrestador(
       tarefas,
       funcionariosAtualizados,
     );
@@ -193,7 +299,7 @@ function App() {
     const funcionariosAtualizados = funcionarios.filter(
       (funcionario) => String(funcionario.id) !== String(id),
     );
-    const tarefasAtualizadas = atribuirTarefasAoPrestadorUnico(
+    const tarefasAtualizadas = atribuirTarefasPorPrestador(
       tarefas,
       funcionariosAtualizados,
     );
@@ -264,7 +370,10 @@ function App() {
         status: tarefaExistente?.status || "Pendente",
         funcionarioId:
           tarefaExistente?.funcionarioId ||
-          (funcionariosBase.length === 1 ? funcionariosBase[0].id : ""),
+          escolherPrestadorParaTarefa(
+            { bairroApartamento: apartamento.Bairro || "" },
+            funcionariosBase,
+          ),
         origem: "Airbnb iCal",
         apartamentoId,
         icalKey: chaveReserva,
@@ -273,6 +382,11 @@ function App() {
           ? "Checkout e check-in no mesmo dia"
           : "",
         observacaoPrestador: tarefaExistente?.observacaoPrestador || "",
+        hospedes:
+          tarefaExistente?.hospedes ||
+          tarefaExistente?.quantidadeHospedes ||
+          apartamento.hospedesMaximos ||
+          "",
         concluidaEm: tarefaExistente?.concluidaEm || "",
       };
     });
@@ -352,7 +466,7 @@ function App() {
     return {
       ...estadoBase,
       apartamentos: apartamentosAtualizados,
-      tarefas: atribuirTarefasAoPrestadorUnico(
+      tarefas: atribuirTarefasPorPrestador(
         tarefasAtualizadas,
         estadoBase.funcionarios,
       ),

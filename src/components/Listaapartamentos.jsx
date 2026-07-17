@@ -104,6 +104,14 @@ function Listaapartamentos({ apartamentos, onExcluir }) {
                   <span>Responsavel</span>
                   <strong>{obterResponsavel(apartamento)}</strong>
                 </div>
+                <div>
+                  <span>Hospedes</span>
+                  <strong>
+                    {apartamento.hospedesMaximos
+                      ? `Ate ${apartamento.hospedesMaximos}`
+                      : "Nao informado"}
+                  </strong>
+                </div>
               </div>
 
               <div className="apartment-actions">

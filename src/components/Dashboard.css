@@ -864,6 +864,12 @@
   padding: 12px;
 }
 
+.date-range-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .date-picker-card strong {
   color: #0e7490;
   font-size: 14px;
@@ -2724,10 +2730,9 @@ button:disabled,
   font-weight: 900;
 }
 
+.task-note-control input,
 .task-note-control textarea {
   width: 100%;
-  min-height: 76px;
-  resize: vertical;
   border: 1px solid #cbd5e1;
   border-radius: 13px;
   background: #ffffff;
@@ -2735,6 +2740,11 @@ button:disabled,
   font-size: 13px;
   line-height: 1.4;
   padding: 10px;
+}
+
+.task-note-control textarea {
+  min-height: 76px;
+  resize: vertical;
 }
 
 .form-panel {
