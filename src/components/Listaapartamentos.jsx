@@ -242,8 +242,11 @@ function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
                   <>
                     <div className="apartment-card-top">
                       <div>
-                        <span>Numero</span>
-                        <h3>{apartamento.numero || "Sem numero"}</h3>
+                        <span>Predio</span>
+                        <h3>
+                          {apartamento["nome.do.predio"] ||
+                            "Predio nao informado"}
+                        </h3>
                       </div>
                       <strong className="apartment-status-badge">
                         {obterStatus(apartamento)}
@@ -251,11 +254,8 @@ function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
                     </div>
 
                     <div className="apartment-location">
-                      <span>Predio</span>
-                      <p>
-                        {apartamento["nome.do.predio"] ||
-                          "Predio nao informado"}
-                      </p>
+                      <span>Numero</span>
+                      <p>{apartamento.numero || "Numero nao informado"}</p>
                     </div>
 
                     <div className="apartment-details">

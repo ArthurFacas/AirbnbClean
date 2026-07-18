@@ -589,6 +589,12 @@ function prestadorPublico(funcionario) {
   };
 }
 
+function montarEnderecoApartamentoBanco(linha) {
+  return [linha.apt_rua, linha.apt_numero, linha.apt_bairro]
+    .filter(Boolean)
+    .join(" - ");
+}
+
 async function buscarPrestador(funcionarioId) {
   await garantirBanco();
 
@@ -633,15 +639,28 @@ async function carregarPortalPrestador(funcionarioId) {
 
   const tarefas = banco
     .prepare(
-      `SELECT id, apartamento_id, apartamento, bairro_apartamento, descricao,
-              checkin, checkout, hora_checkout, status, funcionario_id,
-              origem, prioridade, motivo_prioridade, concluida_em, dados_json
-       FROM tarefas
-       WHERE funcionario_id = ?
-       ORDER BY checkout, apartamento`,
+      `SELECT t.id, t.apartamento_id, t.apartamento, t.bairro_apartamento,
+              t.descricao, t.checkin, t.checkout, t.hora_checkout, t.status,
+              t.funcionario_id, t.origem, t.prioridade, t.motivo_prioridade,
+              t.concluida_em, t.dados_json, a.rua AS apt_rua,
+              a.numero AS apt_numero, a.bairro AS apt_bairro,
+              a.predio AS apt_predio
+       FROM tarefas t
+       LEFT JOIN apartamentos a ON a.id = t.apartamento_id
+       WHERE t.funcionario_id = ?
+       ORDER BY t.checkout, t.apartamento`,
     )
     .all(String(prestador.id))
-    .map(mapearTarefaDoBanco);
+    .map((linha) => {
+      const tarefa = mapearTarefaDoBanco(linha);
+
+      return {
+        ...tarefa,
+        enderecoApartamento:
+          tarefa.enderecoApartamento || montarEnderecoApartamentoBanco(linha),
+        predioApartamento: tarefa.predioApartamento || linha.apt_predio || "",
+      };
+    });
 
   return {
     prestador: prestadorPublico(prestador),
@@ -932,6 +951,74 @@ async function autenticarPrestador(dados) {
     erro.status = 401;
     throw erro;
   }
+
+  return prestadorPublico(prestador);
+}
+
+async function recuperarSenhaPrestador(dados) {
+  await garantirBanco();
+
+  const funcionarioId = String(dados.funcionarioId || "");
+  const email = String(dados.email || "")
+    .trim()
+    .toLowerCase();
+  const senha = String(dados.senha || dados.novaSenha || "");
+  const confirmarSenha = String(dados.confirmarSenha || senha);
+  const prestador = await buscarPrestador(funcionarioId);
+
+  if (!prestador || !validarEmail(email)) {
+    const erro = new Error("Email invalido.");
+    erro.status = 400;
+    throw erro;
+  }
+
+  if (
+    email !==
+    String(prestador.email || "")
+      .trim()
+      .toLowerCase()
+  ) {
+    const erro = new Error("Email nao confere com o cadastro do prestador.");
+    erro.status = 401;
+    throw erro;
+  }
+
+  const acesso = banco
+    .prepare(
+      "SELECT funcionario_id FROM prestador_acessos WHERE funcionario_id = ?",
+    )
+    .get(String(prestador.id));
+
+  if (!acesso) {
+    const erro = new Error("Este prestador ainda nao criou o acesso.");
+    erro.status = 404;
+    throw erro;
+  }
+
+  if (senha.length < 6) {
+    const erro = new Error("A senha precisa ter pelo menos 6 caracteres.");
+    erro.status = 400;
+    throw erro;
+  }
+
+  if (senha !== confirmarSenha) {
+    const erro = new Error("As senhas precisam ser iguais.");
+    erro.status = 400;
+    throw erro;
+  }
+
+  const { hash, salt } = criarHashSenha(senha);
+
+  banco
+    .prepare(
+      `UPDATE prestador_acessos
+       SET email = ?, senha_hash = ?, senha_salt = ?
+       WHERE funcionario_id = ?`,
+    )
+    .run(email, hash, salt, String(prestador.id));
+  banco
+    .prepare("DELETE FROM prestador_sessoes WHERE funcionario_id = ?")
+    .run(String(prestador.id));
 
   return prestadorPublico(prestador);
 }
@@ -1284,6 +1371,25 @@ const servidor = createServer(async (requisicao, resposta) => {
     } catch (erro) {
       enviarJson(resposta, erro.status || 500, {
         erro: erro.message || "Nao foi possivel entrar.",
+      });
+    }
+    return;
+  }
+
+  if (requisicao.url?.startsWith("/api/provider/recover")) {
+    try {
+      if (requisicao.method !== "POST") {
+        enviarJson(resposta, 405, { erro: "Metodo nao permitido." });
+        return;
+      }
+
+      const prestador = await recuperarSenhaPrestador(
+        JSON.parse(await lerCorpo(requisicao)),
+      );
+      enviarJson(resposta, 200, { prestador });
+    } catch (erro) {
+      enviarJson(resposta, erro.status || 500, {
+        erro: erro.message || "Nao foi possivel recuperar a senha.",
       });
     }
     return;

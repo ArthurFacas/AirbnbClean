@@ -148,6 +148,48 @@ function obterChaveReserva(reserva) {
   ].join("|");
 }
 
+function obterHojeInput() {
+  const hoje = new Date();
+  const ano = hoje.getFullYear();
+  const mes = String(hoje.getMonth() + 1).padStart(2, "0");
+  const dia = String(hoje.getDate()).padStart(2, "0");
+
+  return `${ano}-${mes}-${dia}`;
+}
+
+function montarEnderecoApartamento(apartamento) {
+  return [
+    apartamento.rua,
+    apartamento.numero,
+    apartamento.Bairro || apartamento.bairro,
+  ]
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function enriquecerTarefasComApartamento(tarefasAtuais, apartamentosAtuais) {
+  return tarefasAtuais.map((tarefa) => {
+    const apartamento = apartamentosAtuais.find(
+      (item) => String(item.id) === String(tarefa.apartamentoId),
+    );
+
+    if (!apartamento) {
+      return tarefa;
+    }
+
+    return {
+      ...tarefa,
+      enderecoApartamento:
+        tarefa.enderecoApartamento || montarEnderecoApartamento(apartamento),
+      predioApartamento:
+        tarefa.predioApartamento ||
+        apartamento["nome.do.predio"] ||
+        apartamento.predio ||
+        "",
+    };
+  });
+}
+
 function App() {
   const [usuarioLogado, setUsuarioLogado] = useState(() => {
     try {
@@ -178,16 +220,24 @@ function App() {
     const funcionariosCarregados = Array.isArray(estado.funcionarios)
       ? estado.funcionarios
       : [];
+    const apartamentosCarregados = Array.isArray(estado.apartamentos)
+      ? estado.apartamentos
+      : [];
     const tarefasCarregadas = Array.isArray(estado.tarefas)
       ? estado.tarefas
       : [];
+    const tarefasComApartamento = enriquecerTarefasComApartamento(
+      tarefasCarregadas,
+      apartamentosCarregados,
+    );
 
     setFuncionarios(funcionariosCarregados);
-    setApartamentos(
-      Array.isArray(estado.apartamentos) ? estado.apartamentos : [],
-    );
+    setApartamentos(apartamentosCarregados);
     setTarefas(
-      atribuirTarefasPorPrestador(tarefasCarregadas, funcionariosCarregados),
+      atribuirTarefasPorPrestador(
+        tarefasComApartamento,
+        funcionariosCarregados,
+      ),
     );
   }, []);
 
@@ -243,8 +293,12 @@ function App() {
     }).catch(() => {});
   }, [apartamentos, bancoCarregado, funcionarios, tarefas, usuarioLogado?.id]);
 
+  const hojeInput = obterHojeInput();
   const tarefasPendentes = tarefas.filter(
-    (tarefa) => tarefa.status === "Pendente",
+    (tarefa) =>
+      tarefa.status === "Pendente" &&
+      (!obterDataReserva(tarefa.checkout) ||
+        obterDataReserva(tarefa.checkout) >= hojeInput),
   );
 
   async function salvarEstadoAtualizado(estadoAtualizado) {
@@ -338,73 +392,86 @@ function App() {
     tarefasExistentes = [],
     funcionariosBase = funcionarios,
   ) {
+    const dataMinima = obterHojeInput();
     const datasCheckin = new Set(
       reservasBase
         .map((reserva) => obterDataReserva(reserva.checkin))
         .filter(Boolean),
     );
 
-    return reservas.map((reserva, index) => {
-      const dataCheckout = obterDataReserva(reserva.checkout);
-      const temCheckinNoMesmoDia = datasCheckin.has(dataCheckout);
-      const chaveReserva = obterChaveReserva(reserva);
-      const tarefaExistente = tarefasExistentes.find((tarefa) => {
-        const chaveTarefa = tarefa.icalKey || tarefa.chaveReserva;
+    return reservas
+      .filter((reserva) => {
+        const dataCheckout = obterDataReserva(reserva.checkout);
 
-        return chaveTarefa
-          ? chaveTarefa === chaveReserva
-          : obterDataReserva(tarefa.checkout) === dataCheckout;
+        return dataCheckout && dataCheckout >= dataMinima;
+      })
+      .map((reserva, index) => {
+        const dataCheckout = obterDataReserva(reserva.checkout);
+        const temCheckinNoMesmoDia = datasCheckin.has(dataCheckout);
+        const chaveReserva = obterChaveReserva(reserva);
+        const tarefaExistente = tarefasExistentes.find((tarefa) => {
+          const chaveTarefa = tarefa.icalKey || tarefa.chaveReserva;
+
+          return chaveTarefa
+            ? chaveTarefa === chaveReserva
+            : obterDataReserva(tarefa.checkout) === dataCheckout;
+        });
+        let tarefaId = tarefaExistente?.id || apartamentoId * 1000 + index + 1;
+
+        while (
+          !tarefaExistente &&
+          tarefasExistentes.some(
+            (tarefa) => String(tarefa.id) === String(tarefaId),
+          )
+        ) {
+          tarefaId += 1000;
+        }
+
+        return {
+          id: tarefaId,
+          apartamento: apartamento.numero,
+          bairroApartamento: apartamento.Bairro || "",
+          enderecoApartamento: montarEnderecoApartamento(apartamento),
+          predioApartamento:
+            apartamento["nome.do.predio"] || apartamento.predio || "",
+          descricao: reserva.resumo || "Limpeza apos checkout Airbnb",
+          checkin: obterDataReserva(reserva.checkin),
+          checkout: dataCheckout,
+          horaCheckout: apartamento.horaCheckout || "11:00",
+          status: tarefaExistente?.status || "Pendente",
+          funcionarioId:
+            tarefaExistente?.funcionarioId ||
+            escolherPrestadorParaTarefa(
+              { bairroApartamento: apartamento.Bairro || "" },
+              funcionariosBase,
+            ),
+          origem: "Airbnb iCal",
+          apartamentoId,
+          icalKey: chaveReserva,
+          prioridade: temCheckinNoMesmoDia,
+          motivoPrioridade: temCheckinNoMesmoDia
+            ? "Checkout e check-in no mesmo dia"
+            : "",
+          observacaoPrestador:
+            tarefaExistente?.observacaoPrestador ||
+            apartamento.observacaoEndereco ||
+            "",
+          hospedes:
+            tarefaExistente?.hospedes ||
+            tarefaExistente?.quantidadeHospedes ||
+            apartamento.hospedesMaximos ||
+            "",
+          senhaPorta: tarefaExistente?.senhaPorta || apartamento.senhaPorta || "",
+          concluidaEm: tarefaExistente?.concluidaEm || "",
+        };
       });
-      let tarefaId = tarefaExistente?.id || apartamentoId * 1000 + index + 1;
-
-      while (
-        !tarefaExistente &&
-        tarefasExistentes.some((tarefa) => String(tarefa.id) === String(tarefaId))
-      ) {
-        tarefaId += 1000;
-      }
-
-      return {
-        id: tarefaId,
-        apartamento: apartamento.numero,
-        bairroApartamento: apartamento.Bairro || "",
-        descricao: reserva.resumo || "Limpeza apos checkout Airbnb",
-        checkin: obterDataReserva(reserva.checkin),
-        checkout: dataCheckout,
-        horaCheckout: apartamento.horaCheckout || "11:00",
-        status: tarefaExistente?.status || "Pendente",
-        funcionarioId:
-          tarefaExistente?.funcionarioId ||
-          escolherPrestadorParaTarefa(
-            { bairroApartamento: apartamento.Bairro || "" },
-            funcionariosBase,
-          ),
-        origem: "Airbnb iCal",
-        apartamentoId,
-        icalKey: chaveReserva,
-        prioridade: temCheckinNoMesmoDia,
-        motivoPrioridade: temCheckinNoMesmoDia
-          ? "Checkout e check-in no mesmo dia"
-          : "",
-        observacaoPrestador:
-          tarefaExistente?.observacaoPrestador ||
-          apartamento.observacaoEndereco ||
-          "",
-        hospedes:
-          tarefaExistente?.hospedes ||
-          tarefaExistente?.quantidadeHospedes ||
-          apartamento.hospedesMaximos ||
-          "",
-        senhaPorta: tarefaExistente?.senhaPorta || apartamento.senhaPorta || "",
-        concluidaEm: tarefaExistente?.concluidaEm || "",
-      };
-    });
   }
 
   async function sincronizarApartamentosIcal(estadoBase) {
     const apartamentosComIcal = estadoBase.apartamentos.filter(
       (apartamento) => apartamento.ICALL || apartamento.ical,
     );
+    const dataMinima = obterHojeInput();
 
     if (!apartamentosComIcal.length) {
       return estadoBase;
@@ -453,6 +520,12 @@ function App() {
 
           if (tarefa.status === "Concluida") {
             return true;
+          }
+
+          const dataCheckoutTarefa = obterDataReserva(tarefa.checkout);
+
+          if (dataCheckoutTarefa && dataCheckoutTarefa < dataMinima) {
+            return false;
           }
 
           const chaveTarefa = tarefa.icalKey || tarefa.chaveReserva;
@@ -568,6 +641,14 @@ function App() {
         ...tarefa,
         apartamento: campos.numero ?? tarefa.apartamento,
         bairroApartamento: campos.Bairro ?? tarefa.bairroApartamento,
+        enderecoApartamento: montarEnderecoApartamento({
+          ...apartamentoAtual,
+          ...campos,
+        }),
+        predioApartamento:
+          campos["nome.do.predio"] ??
+          apartamentoAtual?.["nome.do.predio"] ??
+          tarefa.predioApartamento,
         senhaPorta: campos.senhaPorta ?? tarefa.senhaPorta,
         hospedes: deveAtualizarHospedes
           ? campos.hospedesMaximos ?? tarefa.hospedes
@@ -677,12 +758,19 @@ function App() {
         : [],
       tarefas: Array.isArray(estadoBanco.tarefas) ? estadoBanco.tarefas : [],
     });
+    const estadoFinal = {
+      ...estadoSincronizado,
+      tarefas: enriquecerTarefasComApartamento(
+        estadoSincronizado.tarefas,
+        estadoSincronizado.apartamentos,
+      ),
+    };
 
-    setFuncionarios(estadoSincronizado.funcionarios);
-    setApartamentos(estadoSincronizado.apartamentos);
-    setTarefas(estadoSincronizado.tarefas);
+    setFuncionarios(estadoFinal.funcionarios);
+    setApartamentos(estadoFinal.apartamentos);
+    setTarefas(estadoFinal.tarefas);
 
-    await salvarEstadoAtualizado(estadoSincronizado);
+    await salvarEstadoAtualizado(estadoFinal);
   }
 
   return (

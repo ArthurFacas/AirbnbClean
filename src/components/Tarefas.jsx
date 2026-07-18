@@ -211,7 +211,11 @@ function Tarefas({
   const dataAmanha = obterAmanha();
   const dataHoje = obterHojeInput();
   const tarefasPendentes = tarefas
-    .filter((tarefa) => tarefa.status === "Pendente")
+    .filter(
+      (tarefa) =>
+        tarefa.status === "Pendente" &&
+        (!obterDataCheckout(tarefa) || obterDataCheckout(tarefa) >= dataHoje),
+    )
     .sort(compararTarefasPorCheckout);
   const tarefasConcluidas = tarefas
     .filter((tarefa) => tarefa.status === "Concluida")

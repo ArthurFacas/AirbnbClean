@@ -224,7 +224,7 @@ function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
     setErro("");
     setSucesso("");
 
-    if (modo === "criar" && senha !== confirmarSenha) {
+    if ((modo === "criar" || modo === "recuperar") && senha !== confirmarSenha) {
       setErro("As senhas precisam ser iguais.");
       return;
     }
@@ -232,8 +232,14 @@ function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
     setCarregando(true);
 
     try {
+      const endpoint =
+        modo === "criar"
+          ? "/api/provider/register"
+          : modo === "recuperar"
+            ? "/api/provider/recover"
+            : "/api/provider/login";
       const resposta = await fetch(
-        modo === "criar" ? "/api/provider/register" : "/api/provider/login",
+        endpoint,
         {
           method: "POST",
           headers: {
@@ -251,6 +257,14 @@ function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
 
       if (!resposta.ok) {
         throw new Error(dados.erro || "Nao foi possivel entrar.");
+      }
+
+      if (modo === "recuperar") {
+        setModo("entrar");
+        setSenha("");
+        setConfirmarSenha("");
+        setSucesso("Senha alterada. Entre com a nova senha.");
+        return;
       }
 
       const sessaoPrestador = {
@@ -279,11 +293,15 @@ function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
           <h1>
             {modo === "criar"
               ? "Criar acesso de prestador"
+              : modo === "recuperar"
+                ? "Recuperar senha"
               : "Entrar como prestador"}
           </h1>
           <p>
             {modo === "criar"
               ? "Este link e somente para criar seu login e senha e ver as tarefas designadas para voce."
+              : modo === "recuperar"
+                ? "Digite o email cadastrado e uma nova senha para trocar o acesso."
               : "Entre para ver somente suas tarefas pendentes, tarefas de hoje e concluidas."}
           </p>
         </div>
@@ -319,7 +337,7 @@ function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
             </button>
           </div>
 
-          {modo === "criar" && (
+          {(modo === "criar" || modo === "recuperar") && (
             <>
               <label htmlFor="prestador-confirmar-senha">Confirmar senha</label>
               <input
@@ -346,8 +364,44 @@ function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
               ? "Aguarde..."
               : modo === "criar"
                 ? "Criar e entrar"
+                : modo === "recuperar"
+                  ? "Trocar senha"
                 : "Entrar"}
           </button>
+
+          {modo === "entrar" && (
+            <button
+              className="provider-auth-link-button"
+              type="button"
+              disabled={carregando}
+              onClick={() => {
+                setModo("recuperar");
+                setErro("");
+                setSucesso("");
+                setSenha("");
+                setConfirmarSenha("");
+              }}
+            >
+              Recuperar senha
+            </button>
+          )}
+
+          {modo === "recuperar" && (
+            <button
+              className="provider-auth-link-button"
+              type="button"
+              disabled={carregando}
+              onClick={() => {
+                setModo("entrar");
+                setErro("");
+                setSucesso("");
+                setSenha("");
+                setConfirmarSenha("");
+              }}
+            >
+              Voltar para entrar
+            </button>
+          )}
         </form>
       </div>
     </div>
@@ -436,16 +490,18 @@ function PortalPrestador({
     return () => window.clearTimeout(timeout);
   }, [carregarPortal]);
 
+  const dataHoje = obterHojeInput();
   const tarefasDoPrestador = useMemo(
     () =>
       tarefasBase
         .filter(
           (tarefa) =>
             tarefa.status === "Pendente" &&
-            String(tarefa.funcionarioId) === String(prestadorId),
+            String(tarefa.funcionarioId) === String(prestadorId) &&
+            (!obterDataCheckout(tarefa) || obterDataCheckout(tarefa) >= dataHoje),
         )
         .sort(compararTarefas),
-    [prestadorId, tarefasBase],
+    [dataHoje, prestadorId, tarefasBase],
   );
   const tarefasConcluidas = useMemo(
     () =>
@@ -458,7 +514,6 @@ function PortalPrestador({
         .sort(compararTarefas),
     [prestadorId, tarefasBase],
   );
-  const dataHoje = obterHojeInput();
   const tarefasHoje = useMemo(
     () =>
       tarefasDoPrestador.filter(
@@ -583,6 +638,16 @@ function PortalPrestador({
             {formatarData(tarefa.checkout)} as {tarefa.horaCheckout || "11:00"}
           </strong>
         </div>
+        {(tarefa.enderecoApartamento || tarefa.predioApartamento) && (
+          <div className="provider-task-meta">
+            <span>Endereco</span>
+            <strong>
+              {[tarefa.predioApartamento, tarefa.enderecoApartamento]
+                .filter(Boolean)
+                .join(" - ")}
+            </strong>
+          </div>
+        )}
         {tarefa.bairroApartamento && <small>{tarefa.bairroApartamento}</small>}
         {tarefa.hospedes && (
           <div className="provider-task-meta">

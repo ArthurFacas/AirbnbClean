@@ -1920,6 +1920,22 @@
   opacity: 0.65;
 }
 
+.provider-auth-link-button {
+  align-self: center;
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 700;
+  padding: 0.2rem 0.4rem;
+}
+
+.provider-auth-link-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .provider-task-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
