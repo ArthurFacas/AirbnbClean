@@ -419,7 +419,10 @@ function Tarefas({
                   </div>
                 </button>
               ) : (
-                <div className="calendar-month-day empty" key={`empty-${index}`} />
+                <div
+                  className="calendar-month-day empty"
+                  key={`empty-${index}`}
+                />
               ),
             )}
           </div>
@@ -565,7 +568,9 @@ function Tarefas({
           )}
 
           {gruposPrestadoresVisiveis.map((grupo) => {
-            const telefoneFuncionario = limparTelefone(grupo.funcionario?.telefone);
+            const telefoneFuncionario = limparTelefone(
+              grupo.funcionario?.telefone,
+            );
             const tarefasAmanhaFuncionario = grupo.funcionario
               ? grupo.tarefas.filter(
                   (tarefa) => obterDataCheckout(tarefa) === dataAmanha,
@@ -679,43 +684,43 @@ function Tarefas({
                 ? tarefasConcluidasDaDataSelecionada
                 : tarefasConcluidas
               ).length ? (
-                  <div className="list-grid">
-                    {(dataConcluidaSelecionada
-                      ? tarefasConcluidasDaDataSelecionada
-                      : tarefasConcluidas
-                    ).map((tarefa) => {
-                      const responsavel = encontrarFuncionario(
-                        funcionarios,
-                        tarefa.funcionarioId,
-                      );
+                <div className="list-grid">
+                  {(dataConcluidaSelecionada
+                    ? tarefasConcluidasDaDataSelecionada
+                    : tarefasConcluidas
+                  ).map((tarefa) => {
+                    const responsavel = encontrarFuncionario(
+                      funcionarios,
+                      tarefa.funcionarioId,
+                    );
 
-                      return (
-                        <div
-                          className="info-card task-card completed"
-                          key={tarefa.id}
-                        >
-                          <div className="task-card-main">
-                            <span className="task-apartment-label">
-                              Apartamento
-                            </span>
-                            <h3>{tarefa.apartamento}</h3>
-                            <p>{tarefa.descricao}</p>
-                          </div>
-                          <div className="provider-task-done-by">
-                            <span>Feita por</span>
-                            <strong>
-                              {responsavel?.nome ||
-                                "Prestador nao identificado"}
-                            </strong>
-                            <span>Concluida em</span>
-                            <strong>
-                              {formatarDataCompleta(obterDataConclusao(tarefa))}
-                            </strong>
-                          </div>
+                    return (
+                      <div
+                        className="info-card task-card completed"
+                        key={tarefa.id}
+                      >
+                        <div className="task-card-main">
+                          <span className="task-apartment-label">
+                            Apartamento
+                          </span>
+                          <h3>{tarefa.apartamento}</h3>
+                          <p>{tarefa.descricao}</p>
                         </div>
-                      );
-                    })}
-                  </div>
+                        <div className="provider-task-done-by">
+                          <span>Feita por</span>
+                          <strong>
+                            {responsavel?.nome ||
+                              "Prestador nao identificado"}
+                          </strong>
+                          <span>Concluida em</span>
+                          <strong>
+                            {formatarDataCompleta(obterDataConclusao(tarefa))}
+                          </strong>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
                 <div className="provider-empty compact">
                   <p>Nenhuma tarefa concluida encontrada.</p>

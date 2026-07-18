@@ -11,6 +11,7 @@ const estadoInicial = {
   ICALL: "",
   horaCheckout: "",
   hospedesMaximos: "",
+  senhaPorta: "",
 };
 
 function CadastroApartamento({ onCadastrar }) {
@@ -142,6 +143,16 @@ function CadastroApartamento({ onCadastrar }) {
           step="1"
           placeholder="Ex: 4"
           required
+        />
+
+        <label htmlFor="senhaPorta">Senha da porta</label>
+        <input
+          type="password"
+          id="senhaPorta"
+          name="senhaPorta"
+          value={formulario.senhaPorta}
+          onChange={atualizarCampo}
+          placeholder="Senha ou codigo de acesso"
         />
 
         <label htmlFor="dataReserva">Código ICALL</label>

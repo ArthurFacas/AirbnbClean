@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { calcularUrgencia } from "../utils/tarefas";
+import SenhaPorta from "./SenhaPorta";
 import "./Dashboard.css";
 
 function formatarData(data) {
@@ -77,7 +78,9 @@ function obterDataConclusao(tarefa) {
   }
 
   const data = new Date(texto);
-  return Number.isNaN(data.getTime()) ? obterDataCheckout(tarefa) : data.toISOString().slice(0, 10);
+  return Number.isNaN(data.getTime())
+    ? obterDataCheckout(tarefa)
+    : data.toISOString().slice(0, 10);
 }
 
 function compararTarefas(tarefaA, tarefaB) {
@@ -334,7 +337,11 @@ function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
           {erro && <p className="provider-auth-error">{erro}</p>}
           {sucesso && <p className="provider-auth-success">{sucesso}</p>}
 
-          <button className="provider-auth-submit" type="submit" disabled={carregando}>
+          <button
+            className="provider-auth-submit"
+            type="submit"
+            disabled={carregando}
+          >
             {carregando
               ? "Aguarde..."
               : modo === "criar"
@@ -519,7 +526,8 @@ function PortalPrestador({
             ? {
                 ...tarefa,
                 status: "Concluida",
-                concluidaEm: dados.tarefa?.concluidaEm || new Date().toISOString(),
+                concluidaEm:
+                  dados.tarefa?.concluidaEm || new Date().toISOString(),
               }
             : tarefa,
         ),
@@ -582,6 +590,7 @@ function PortalPrestador({
             <strong>{tarefa.hospedes}</strong>
           </div>
         )}
+        <SenhaPorta senha={tarefa.senhaPorta} />
         {tarefa.observacaoPrestador && (
           <div className="provider-task-note">
             <span>Observacao</span>
@@ -809,10 +818,15 @@ function PortalPrestador({
                     onClick={() => setDataSelecionada(dia.data)}
                   >
                     <span>{dia.dia}</span>
-                    {dia.tarefas.length > 0 && <strong>{dia.tarefas.length}</strong>}
+                    {dia.tarefas.length > 0 && (
+                      <strong>{dia.tarefas.length}</strong>
+                    )}
                   </button>
                 ) : (
-                  <div className="provider-calendar-day empty" key={`empty-${index}`} />
+                  <div
+                    className="provider-calendar-day empty"
+                    key={`empty-${index}`}
+                  />
                 ),
               )}
             </div>
@@ -883,12 +897,12 @@ function PortalPrestador({
                   ? tarefasConcluidasDaDataSelecionada
                   : tarefasConcluidas
                 ).length ? (
-                    <div className="provider-task-list compact">
-                      {(dataConcluidaSelecionada
-                        ? tarefasConcluidasDaDataSelecionada
-                        : tarefasConcluidas
-                      ).map((tarefa) => renderizarCardTarefa(tarefa, true))}
-                    </div>
+                  <div className="provider-task-list compact">
+                    {(dataConcluidaSelecionada
+                      ? tarefasConcluidasDaDataSelecionada
+                      : tarefasConcluidas
+                    ).map((tarefa) => renderizarCardTarefa(tarefa, true))}
+                  </div>
                 ) : (
                   <div className="provider-empty compact">
                     <p>Nenhuma tarefa concluida encontrada.</p>

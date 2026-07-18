@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { calcularUrgencia } from "../utils/tarefas";
+import SenhaPorta from "./SenhaPorta";
 
 function formatarData(data) {
   if (!data) {
@@ -195,6 +196,8 @@ function TarefaCard({
         </div>
         <p>{observacao || "Sem observacoes"}</p>
       </div>
+
+      <SenhaPorta senha={tarefa.senhaPorta} />
 
       <div className="task-note-control">
         <label htmlFor={`hospedes-${tarefa.id}`}>Hospedes nesta tarefa</label>

@@ -1,5 +1,7 @@
 import { createServer } from "node:http";
 import {
+  createCipheriv,
+  createDecipheriv,
   createHash,
   pbkdf2Sync,
   randomBytes,
@@ -17,6 +19,10 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const DB_FILE =
   process.env.DATABASE_FILE || path.join(DATA_DIR, "database.sqlite");
 const DIST_DIR = path.join(__dirname, "dist");
+const SENHA_PORTA_PREFIXO = "enc:v1";
+const CHAVE_SENHA_PORTA = createHash("sha256")
+  .update(process.env.CLEANHOST_SECRET || "cleanhost-local-senha-porta")
+  .digest();
 
 const tipos = {
   ".css": "text/css; charset=utf-8",
@@ -310,7 +316,7 @@ async function salvarEstado(estado, ownerId) {
         apartamento.checkout || "",
         apartamento.horaCheckout || "11:00",
         JSON.stringify(normalizarArray(apartamento.reservas)),
-        JSON.stringify(apartamento),
+        JSON.stringify(protegerSenhaPorta(apartamento)),
       );
     });
 
@@ -349,7 +355,7 @@ async function salvarEstado(estado, ownerId) {
         tarefa.prioridade ? 1 : 0,
         tarefa.motivoPrioridade || "",
         concluidaEmFinal,
-        JSON.stringify(tarefaParaSalvar),
+        JSON.stringify(protegerSenhaPorta(tarefaParaSalvar)),
       );
     });
 
@@ -405,8 +411,85 @@ function lerJson(valor, fallback) {
   }
 }
 
+function criptografarSenhaPorta(valor) {
+  const texto = String(valor || "");
+
+  if (!texto || texto.startsWith(`${SENHA_PORTA_PREFIXO}:`)) {
+    return texto;
+  }
+
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", CHAVE_SENHA_PORTA, iv);
+  const criptografado = Buffer.concat([
+    cipher.update(texto, "utf8"),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+
+  return [
+    SENHA_PORTA_PREFIXO,
+    iv.toString("hex"),
+    tag.toString("hex"),
+    criptografado.toString("hex"),
+  ].join(":");
+}
+
+function descriptografarSenhaPorta(valor) {
+  const texto = String(valor || "");
+
+  if (!texto.startsWith(`${SENHA_PORTA_PREFIXO}:`)) {
+    return texto;
+  }
+
+  const partes = texto.slice(`${SENHA_PORTA_PREFIXO}:`.length).split(":");
+
+  if (partes.length !== 3) {
+    return "";
+  }
+
+  try {
+    const [ivHex, tagHex, conteudoHex] = partes;
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      CHAVE_SENHA_PORTA,
+      Buffer.from(ivHex, "hex"),
+    );
+
+    decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+
+    return Buffer.concat([
+      decipher.update(Buffer.from(conteudoHex, "hex")),
+      decipher.final(),
+    ]).toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
+function protegerSenhaPorta(dados) {
+  if (!dados || typeof dados !== "object" || !dados.senhaPorta) {
+    return dados;
+  }
+
+  return {
+    ...dados,
+    senhaPorta: criptografarSenhaPorta(dados.senhaPorta),
+  };
+}
+
+function revelarSenhaPorta(dados) {
+  if (!dados || typeof dados !== "object" || !dados.senhaPorta) {
+    return dados;
+  }
+
+  return {
+    ...dados,
+    senhaPorta: descriptografarSenhaPorta(dados.senhaPorta),
+  };
+}
+
 function mapearApartamentoDoBanco(linha) {
-  const dados = lerJson(linha.dados_json, {});
+  const dados = revelarSenhaPorta(lerJson(linha.dados_json, {}));
 
   return {
     ...dados,
@@ -433,7 +516,7 @@ function mapearFuncionarioDoBanco(linha) {
 }
 
 function mapearTarefaDoBanco(linha) {
-  const dados = lerJson(linha.dados_json, {});
+  const dados = revelarSenhaPorta(lerJson(linha.dados_json, {}));
 
   return {
     ...dados,

@@ -102,7 +102,10 @@ function atribuirTarefasPorPrestador(tarefasAtuais, funcionariosAtuais) {
       (funcionario) => String(funcionario.id) === String(tarefa.funcionarioId),
     );
 
-    if (funcionarioAtual && prestadorAtendeBairro(funcionarioAtual, tarefa.bairroApartamento)) {
+    if (
+      funcionarioAtual &&
+      prestadorAtendeBairro(funcionarioAtual, tarefa.bairroApartamento)
+    ) {
       return tarefa;
     }
 
@@ -114,19 +117,21 @@ function atribuirTarefasPorPrestador(tarefasAtuais, funcionariosAtuais) {
       return tarefa;
     }
 
-    const prestadorEscolhido = prestadoresDoBairro.sort((prestadorA, prestadorB) => {
-      const cargaA = cargas[String(prestadorA.id)] || 0;
-      const cargaB = cargas[String(prestadorB.id)] || 0;
+    const prestadorEscolhido = prestadoresDoBairro.sort(
+      (prestadorA, prestadorB) => {
+        const cargaA = cargas[String(prestadorA.id)] || 0;
+        const cargaB = cargas[String(prestadorB.id)] || 0;
 
-      if (cargaA !== cargaB) {
-        return cargaA - cargaB;
-      }
+        if (cargaA !== cargaB) {
+          return cargaA - cargaB;
+        }
 
-      return String(prestadorA.nome || "").localeCompare(
-        String(prestadorB.nome || ""),
-        "pt-BR",
-      );
-    })[0];
+        return String(prestadorA.nome || "").localeCompare(
+          String(prestadorB.nome || ""),
+          "pt-BR",
+        );
+      },
+    )[0];
 
     cargas[String(prestadorEscolhido.id)] =
       (cargas[String(prestadorEscolhido.id)] || 0) + 1;
@@ -387,6 +392,7 @@ function App() {
           tarefaExistente?.quantidadeHospedes ||
           apartamento.hospedesMaximos ||
           "",
+        senhaPorta: tarefaExistente?.senhaPorta || apartamento.senhaPorta || "",
         concluidaEm: tarefaExistente?.concluidaEm || "",
       };
     });
@@ -405,7 +411,9 @@ function App() {
     let tarefasAtualizadas = estadoBase.tarefas;
 
     for (const apartamento of apartamentosComIcal) {
-      const calendario = await buscarReservasIcal(apartamento.ICALL || apartamento.ical);
+      const calendario = await buscarReservasIcal(
+        apartamento.ICALL || apartamento.ical,
+      );
       const reservas = calendario?.reservas || [];
       const apartamentoAtualizado = {
         ...apartamento,

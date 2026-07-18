@@ -2717,6 +2717,58 @@ button:disabled,
   -webkit-line-clamp: 3;
 }
 
+.door-password-box {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 13px;
+  background: #f8fafc;
+}
+
+.door-password-box > span {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.door-password-box > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.door-password-box strong {
+  overflow: hidden;
+  color: #172033;
+  font-size: 14px;
+  font-weight: 950;
+  letter-spacing: 1px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.door-password-box button {
+  min-height: 30px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0e7490;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 5px 10px;
+}
+
+.door-password-box button:hover {
+  border-color: #0e7490;
+  background: #ecfeff;
+}
+
 .task-note-control {
   display: grid;
   gap: 7px;
