@@ -1,7 +1,30 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import SenhaPorta from "./SenhaPorta";
 
-function Listaapartamentos({ apartamentos, onExcluir }) {
+function obterValor(valor, fallback = "Nao informado") {
+  return String(valor || "").trim() || fallback;
+}
+
+function criarFormularioApartamento(apartamento) {
+  return {
+    Bairro: apartamento.Bairro || apartamento.bairro || "",
+    rua: apartamento.rua || "",
+    numero: apartamento.numero || "",
+    observacaoEndereco: apartamento.observacaoEndereco || "",
+    "nome.do.predio":
+      apartamento["nome.do.predio"] || apartamento.predio || "",
+    hospedesMaximos: apartamento.hospedesMaximos || "",
+    senhaPorta: apartamento.senhaPorta || "",
+    ICALL: apartamento.ICALL || apartamento.ical || "",
+  };
+}
+
+function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
   const navigate = useNavigate();
+  const [apartamentoEditando, setApartamentoEditando] = useState("");
+  const [formulario, setFormulario] = useState({});
+  const [mostrarSenhaPorta, setMostrarSenhaPorta] = useState(false);
   const possuiStatus = apartamentos.some((apartamento) => apartamento.status);
 
   function obterStatus(apartamento) {
@@ -11,8 +34,8 @@ function Listaapartamentos({ apartamentos, onExcluir }) {
   function obterEndereco(apartamento) {
     const partesEndereco = [
       apartamento.rua,
+      apartamento.numero,
       apartamento.Bairro,
-      apartamento["nome.do.predio"],
     ].filter(Boolean);
 
     return partesEndereco.length
@@ -20,13 +43,33 @@ function Listaapartamentos({ apartamentos, onExcluir }) {
       : "Endereco nao informado";
   }
 
-  function obterResponsavel(apartamento) {
-    return (
-      apartamento.host ||
-      apartamento.responsavel ||
-      apartamento.anfitriao ||
-      "Responsavel nao informado"
-    );
+  function editarApartamento(apartamento) {
+    setApartamentoEditando(String(apartamento.id));
+    setFormulario(criarFormularioApartamento(apartamento));
+    setMostrarSenhaPorta(false);
+  }
+
+  function atualizarCampo(event) {
+    const { name, value } = event.target;
+
+    setFormulario((dadosAtuais) => ({
+      ...dadosAtuais,
+      [name]: value,
+    }));
+  }
+
+  function salvarEdicao(event, apartamento) {
+    event.preventDefault();
+    onAtualizar(apartamento.id, formulario);
+    setApartamentoEditando("");
+    setFormulario({});
+    setMostrarSenhaPorta(false);
+  }
+
+  function cancelarEdicao() {
+    setApartamentoEditando("");
+    setFormulario({});
+    setMostrarSenhaPorta(false);
   }
 
   return (
@@ -78,52 +121,187 @@ function Listaapartamentos({ apartamentos, onExcluir }) {
         </div>
       ) : (
         <div className="apartment-grid">
-          {apartamentos.map((apartamento) => (
-            <article className="info-card apartment-card" key={apartamento.id}>
-              <div className="apartment-card-top">
-                <div>
-                  <span>Apartamento</span>
-                  <h3>{apartamento.numero || "Sem numero"}</h3>
-                </div>
-                <strong className="apartment-status-badge">
-                  {obterStatus(apartamento)}
-                </strong>
-              </div>
+          {apartamentos.map((apartamento) => {
+            const editando =
+              apartamentoEditando === String(apartamento.id);
 
-              <div className="apartment-location">
-                <span>Predio</span>
-                <p>{apartamento["nome.do.predio"] || "Predio nao informado"}</p>
-              </div>
+            return (
+              <article className="info-card apartment-card" key={apartamento.id}>
+                {editando ? (
+                  <form
+                    className="apartment-edit-form"
+                    onSubmit={(event) => salvarEdicao(event, apartamento)}
+                  >
+                    <label htmlFor={`apt-bairro-${apartamento.id}`}>Bairro</label>
+                    <input
+                      id={`apt-bairro-${apartamento.id}`}
+                      name="Bairro"
+                      value={formulario.Bairro || ""}
+                      onChange={atualizarCampo}
+                      required
+                    />
 
-              <div className="apartment-details">
-                <div>
-                  <span>Endereco</span>
-                  <strong>{obterEndereco(apartamento)}</strong>
-                </div>
-                <div>
-                  <span>Responsavel</span>
-                  <strong>{obterResponsavel(apartamento)}</strong>
-                </div>
-                <div>
-                  <span>Hospedes</span>
-                  <strong>
-                    {apartamento.hospedesMaximos
-                      ? `Ate ${apartamento.hospedesMaximos}`
-                      : "Nao informado"}
-                  </strong>
-                </div>
-              </div>
+                    <label htmlFor={`apt-rua-${apartamento.id}`}>Rua</label>
+                    <input
+                      id={`apt-rua-${apartamento.id}`}
+                      name="rua"
+                      value={formulario.rua || ""}
+                      onChange={atualizarCampo}
+                      required
+                    />
 
-              <div className="apartment-actions">
-                <button
-                  className="danger-action"
-                  onClick={() => onExcluir(apartamento.id)}
-                >
-                  Excluir
-                </button>
-              </div>
-            </article>
-          ))}
+                    <label htmlFor={`apt-numero-${apartamento.id}`}>Numero</label>
+                    <input
+                      id={`apt-numero-${apartamento.id}`}
+                      name="numero"
+                      value={formulario.numero || ""}
+                      onChange={atualizarCampo}
+                      required
+                    />
+
+                    <label htmlFor={`apt-observacao-${apartamento.id}`}>
+                      Observacao
+                    </label>
+                    <textarea
+                      id={`apt-observacao-${apartamento.id}`}
+                      name="observacaoEndereco"
+                      value={formulario.observacaoEndereco || ""}
+                      onChange={atualizarCampo}
+                      rows={3}
+                    />
+
+                    <label htmlFor={`apt-predio-${apartamento.id}`}>
+                      Nome do predio
+                    </label>
+                    <input
+                      id={`apt-predio-${apartamento.id}`}
+                      name="nome.do.predio"
+                      value={formulario["nome.do.predio"] || ""}
+                      onChange={atualizarCampo}
+                      required
+                    />
+
+                    <label htmlFor={`apt-hospedes-${apartamento.id}`}>
+                      Quantidade maxima de hospedes
+                    </label>
+                    <input
+                      id={`apt-hospedes-${apartamento.id}`}
+                      name="hospedesMaximos"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={formulario.hospedesMaximos || ""}
+                      onChange={atualizarCampo}
+                      required
+                    />
+
+                    <label htmlFor={`apt-senha-${apartamento.id}`}>
+                      Senha da porta
+                    </label>
+                    <div className="form-password-row">
+                      <input
+                        id={`apt-senha-${apartamento.id}`}
+                        name="senhaPorta"
+                        type={mostrarSenhaPorta ? "text" : "password"}
+                        value={formulario.senhaPorta || ""}
+                        onChange={atualizarCampo}
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMostrarSenhaPorta((valorAtual) => !valorAtual)
+                        }
+                      >
+                        {mostrarSenhaPorta ? "Ocultar" : "Ver"}
+                      </button>
+                    </div>
+
+                    <label htmlFor={`apt-ical-${apartamento.id}`}>Codigo ICALL</label>
+                    <input
+                      id={`apt-ical-${apartamento.id}`}
+                      name="ICALL"
+                      value={formulario.ICALL || ""}
+                      onChange={atualizarCampo}
+                      required
+                    />
+
+                    <div className="apartment-actions">
+                      <button className="primary-action" type="submit">
+                        Salvar
+                      </button>
+                      <button
+                        className="secondary-action"
+                        type="button"
+                        onClick={cancelarEdicao}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <div className="apartment-card-top">
+                      <div>
+                        <span>Numero</span>
+                        <h3>{apartamento.numero || "Sem numero"}</h3>
+                      </div>
+                      <strong className="apartment-status-badge">
+                        {obterStatus(apartamento)}
+                      </strong>
+                    </div>
+
+                    <div className="apartment-location">
+                      <span>Predio</span>
+                      <p>
+                        {apartamento["nome.do.predio"] ||
+                          "Predio nao informado"}
+                      </p>
+                    </div>
+
+                    <div className="apartment-details">
+                      <div>
+                        <span>Endereco</span>
+                        <strong>{obterEndereco(apartamento)}</strong>
+                      </div>
+                      <div>
+                        <span>Observacao</span>
+                        <strong>
+                          {obterValor(apartamento.observacaoEndereco)}
+                        </strong>
+                      </div>
+                      <div>
+                        <span>Hospedes</span>
+                        <strong>
+                          {apartamento.hospedesMaximos
+                            ? `Ate ${apartamento.hospedesMaximos}`
+                            : "Nao informado"}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <SenhaPorta senha={apartamento.senhaPorta} />
+
+                    <div className="apartment-actions">
+                      <button
+                        className="secondary-action"
+                        type="button"
+                        onClick={() => editarApartamento(apartamento)}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        className="danger-action"
+                        type="button"
+                        onClick={() => onExcluir(apartamento.id)}
+                      >
+                        Excluir
+                      </button>
+                    </div>
+                  </>
+                )}
+              </article>
+            );
+          })}
         </div>
       )}
     </div>

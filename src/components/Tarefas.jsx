@@ -209,6 +209,7 @@ function Tarefas({
   const [dataInicioPeriodo, setDataInicioPeriodo] = useState(obterHojeInput());
   const [dataFimPeriodo, setDataFimPeriodo] = useState("");
   const dataAmanha = obterAmanha();
+  const dataHoje = obterHojeInput();
   const tarefasPendentes = tarefas
     .filter((tarefa) => tarefa.status === "Pendente")
     .sort(compararTarefasPorCheckout);
@@ -400,6 +401,8 @@ function Tarefas({
                   type="button"
                   className={`calendar-month-day ${
                     dia.tarefas.length ? "has-tasks" : ""
+                  } ${dia.data < dataHoje ? "past-day" : ""} ${
+                    dia.data === dataHoje ? "today" : ""
                   }`}
                   onClick={() => abrirDataDoCalendario(dia.data)}
                 >

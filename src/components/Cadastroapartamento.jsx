@@ -4,10 +4,9 @@ import { useNavigate } from "react-router-dom";
 const estadoInicial = {
   Bairro: "",
   rua: "",
-  "nome.do.predio": "",
   numero: "",
-  Andar: "",
-  bloco: "",
+  observacaoEndereco: "",
+  "nome.do.predio": "",
   ICALL: "",
   horaCheckout: "",
   hospedesMaximos: "",
@@ -18,6 +17,7 @@ function CadastroApartamento({ onCadastrar }) {
   const [formulario, setFormulario] = useState(estadoInicial);
   const [carregandoIcal, setCarregandoIcal] = useState(false);
   const [erroIcal, setErroIcal] = useState("");
+  const [mostrarSenhaPorta, setMostrarSenhaPorta] = useState(false);
   const navigate = useNavigate();
 
   function atualizarCampo(event) {
@@ -72,6 +72,8 @@ function CadastroApartamento({ onCadastrar }) {
       </div>
 
       <form className="form-panel" onSubmit={salvarApartamento}>
+        <h2 className="form-section-title">Endereco</h2>
+
         <label htmlFor="Bairro">Bairro</label>
         <input
           type="text"
@@ -92,17 +94,7 @@ function CadastroApartamento({ onCadastrar }) {
           required
         />
 
-        <label htmlFor="nome do prédio">Nome do prédio</label>
-        <input
-          type="text"
-          id="nome.do.predio"
-          name="nome.do.predio"
-          value={formulario["nome.do.predio"]}
-          onChange={atualizarCampo}
-          required
-        />
-
-        <label htmlFor="numero">Numero do apartamento</label>
+        <label htmlFor="numero">Numero</label>
         <input
           type="text"
           id="numero"
@@ -112,22 +104,22 @@ function CadastroApartamento({ onCadastrar }) {
           required
         />
 
-        <label htmlFor="host">Andar</label>
-        <input
-          type="text"
-          id="Andar"
-          name="Andar"
-          value={formulario.Andar}
+        <label htmlFor="observacaoEndereco">Observacao</label>
+        <textarea
+          id="observacaoEndereco"
+          name="observacaoEndereco"
+          value={formulario.observacaoEndereco}
           onChange={atualizarCampo}
-          required
+          placeholder="Ex: apartamento 403, bloco B, fundos, portaria..."
+          rows={3}
         />
 
-        <label htmlFor="bloco">bloco</label>
+        <label htmlFor="nome.do.predio">Nome do predio</label>
         <input
           type="text"
-          id="bloco"
-          name="bloco"
-          value={formulario.bloco}
+          id="nome.do.predio"
+          name="nome.do.predio"
+          value={formulario["nome.do.predio"]}
           onChange={atualizarCampo}
           required
         />
@@ -146,16 +138,27 @@ function CadastroApartamento({ onCadastrar }) {
         />
 
         <label htmlFor="senhaPorta">Senha da porta</label>
-        <input
-          type="password"
-          id="senhaPorta"
-          name="senhaPorta"
-          value={formulario.senhaPorta}
-          onChange={atualizarCampo}
-          placeholder="Senha ou codigo de acesso"
-        />
+        <div className="form-password-row">
+          <input
+            type={mostrarSenhaPorta ? "text" : "password"}
+            id="senhaPorta"
+            name="senhaPorta"
+            value={formulario.senhaPorta}
+            onChange={atualizarCampo}
+            placeholder="Senha ou codigo de acesso"
+          />
+          <button
+            type="button"
+            aria-label={
+              mostrarSenhaPorta ? "Ocultar senha da porta" : "Ver senha da porta"
+            }
+            onClick={() => setMostrarSenhaPorta((valorAtual) => !valorAtual)}
+          >
+            {mostrarSenhaPorta ? "Ocultar" : "Ver"}
+          </button>
+        </div>
 
-        <label htmlFor="dataReserva">Código ICALL</label>
+        <label htmlFor="ICALL">Codigo ICALL</label>
         <input
           type="text"
           id="ICALL"

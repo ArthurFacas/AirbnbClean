@@ -386,7 +386,10 @@ function App() {
         motivoPrioridade: temCheckinNoMesmoDia
           ? "Checkout e check-in no mesmo dia"
           : "",
-        observacaoPrestador: tarefaExistente?.observacaoPrestador || "",
+        observacaoPrestador:
+          tarefaExistente?.observacaoPrestador ||
+          apartamento.observacaoEndereco ||
+          "",
         hospedes:
           tarefaExistente?.hospedes ||
           tarefaExistente?.quantidadeHospedes ||
@@ -537,6 +540,52 @@ function App() {
     } catch (erro) {
       window.alert(erro.message || "Nao foi possivel excluir o apartamento.");
     }
+  }
+
+  function atualizarApartamento(apartamentoId, campos) {
+    const apartamentoAtual = apartamentos.find(
+      (apartamento) => String(apartamento.id) === String(apartamentoId),
+    );
+    const apartamentosAtualizados = apartamentos.map((apartamento) =>
+      String(apartamento.id) === String(apartamentoId)
+        ? { ...apartamento, ...campos }
+        : apartamento,
+    );
+    const tarefasAtualizadas = tarefas.map((tarefa) => {
+      if (String(tarefa.apartamentoId) !== String(apartamentoId)) {
+        return tarefa;
+      }
+
+      const deveAtualizarHospedes =
+        !tarefa.hospedes ||
+        String(tarefa.hospedes) === String(apartamentoAtual?.hospedesMaximos || "");
+      const deveAtualizarObservacao =
+        !tarefa.observacaoPrestador ||
+        String(tarefa.observacaoPrestador) ===
+          String(apartamentoAtual?.observacaoEndereco || "");
+
+      return {
+        ...tarefa,
+        apartamento: campos.numero ?? tarefa.apartamento,
+        bairroApartamento: campos.Bairro ?? tarefa.bairroApartamento,
+        senhaPorta: campos.senhaPorta ?? tarefa.senhaPorta,
+        hospedes: deveAtualizarHospedes
+          ? campos.hospedesMaximos ?? tarefa.hospedes
+          : tarefa.hospedes,
+        observacaoPrestador: deveAtualizarObservacao
+          ? campos.observacaoEndereco ?? tarefa.observacaoPrestador
+          : tarefa.observacaoPrestador,
+      };
+    });
+
+    setApartamentos(apartamentosAtualizados);
+    setTarefas(tarefasAtualizadas);
+
+    salvarEstadoAtualizado({
+      funcionarios,
+      apartamentos: apartamentosAtualizados,
+      tarefas: tarefasAtualizadas,
+    }).catch(() => {});
   }
 
   function atribuirFuncionarioTarefa(tarefaId, funcionarioId) {
@@ -719,6 +768,7 @@ function App() {
           element={
             <Listaapartamentos
               apartamentos={apartamentos}
+              onAtualizar={atualizarApartamento}
               onExcluir={excluirApartamento}
             />
           }

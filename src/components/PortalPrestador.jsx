@@ -814,6 +814,8 @@ function PortalPrestador({
                     type="button"
                     className={`provider-calendar-day ${
                       dia.tarefas.length ? "has-tasks" : ""
+                    } ${dia.data < dataHoje ? "past-day" : ""} ${
+                      dia.data === dataHoje ? "today" : ""
                     } ${dataSelecionada === dia.data ? "active" : ""}`}
                     onClick={() => setDataSelecionada(dia.data)}
                   >
