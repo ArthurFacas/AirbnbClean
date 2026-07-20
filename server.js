@@ -15,7 +15,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3001);
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+const DATA_DIR =
+  process.env.DATA_DIR ||
+  (process.env.RENDER ? "/var/data/cleanhost" : path.join(__dirname, "data"));
 const DB_FILE =
   process.env.DATABASE_FILE || path.join(DATA_DIR, "database.sqlite");
 const DIST_DIR = path.join(__dirname, "dist");
@@ -40,6 +42,11 @@ async function garantirBanco() {
 
   if (!banco) {
     banco = new DatabaseSync(DB_FILE);
+    banco.exec(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA busy_timeout = 5000;
+      PRAGMA foreign_keys = ON;
+    `);
     banco.exec(`
       CREATE TABLE IF NOT EXISTS funcionarios (
         id INTEGER PRIMARY KEY,
@@ -1143,6 +1150,24 @@ const servidor = createServer(async (requisicao, resposta) => {
     return;
   }
 
+  if (requisicao.url?.startsWith("/api/health")) {
+    try {
+      await garantirBanco();
+      enviarJson(resposta, 200, {
+        ok: true,
+        databaseFile: DB_FILE,
+        persistentDiskPath: DATA_DIR,
+        render: Boolean(process.env.RENDER),
+      });
+    } catch {
+      enviarJson(resposta, 500, {
+        ok: false,
+        erro: "Banco indisponivel.",
+      });
+    }
+    return;
+  }
+
   if (requisicao.url?.startsWith("/api/ical")) {
     try {
       if (requisicao.method !== "GET") {
@@ -1419,4 +1444,5 @@ const servidor = createServer(async (requisicao, resposta) => {
 
 servidor.listen(PORT, () => {
   console.log(`Banco/API rodando em http://localhost:${PORT}`);
+  console.log(`Banco SQLite em ${DB_FILE}`);
 });
