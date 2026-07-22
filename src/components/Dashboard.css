@@ -765,6 +765,7 @@
   align-content: start;
   gap: 7px;
   min-height: 112px;
+  overflow: hidden;
   border: 1px solid #e2e8f0;
   border-radius: 14px;
   background: #f8fafc;
@@ -822,26 +823,40 @@
 .calendar-month-day div {
   display: grid;
   gap: 5px;
+  min-width: 0;
 }
 
 .calendar-month-day strong,
-.calendar-month-day em {
+.calendar-more-button {
   overflow: hidden;
   max-width: 100%;
-  border-radius: 999px;
+  border: 0;
+  border-radius: 8px;
   background: #ecfeff;
   color: #0e7490;
   font-size: 11px;
   font-style: normal;
   font-weight: 900;
+  line-height: 1.2;
   padding: 5px 7px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .calendar-month-day strong.priority {
   background: #ffedd5;
   color: #9a3412;
+}
+
+.calendar-more-button {
+  cursor: pointer;
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.calendar-more-button:hover {
+  background: #e2e8f0;
 }
 
 .date-picker-card {
@@ -2287,8 +2302,10 @@
 .provider-calendar-day {
   position: relative;
   display: grid;
-  place-items: center;
-  min-height: 72px;
+  align-content: start;
+  gap: 6px;
+  min-height: 112px;
+  overflow: hidden;
   border: 1px solid #e2e8f0;
   border-radius: 14px;
   background: #f8fafc;
@@ -2311,27 +2328,45 @@
 
 .provider-calendar-day.active {
   border-color: #0e7490;
-  background: #0e7490;
-  color: white;
+  background: #ecfeff;
+  color: #172033;
 }
 
-.provider-calendar-day strong {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
+.provider-calendar-day > span {
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.provider-calendar-task-list {
   display: grid;
-  place-items: center;
-  min-width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  background: #172033;
-  color: white;
-  font-size: 11px;
+  gap: 5px;
+  min-width: 0;
 }
 
-.provider-calendar-day.active strong {
-  background: white;
+.provider-calendar-task-list strong,
+.provider-calendar-task-list .calendar-more-button {
+  overflow: hidden;
+  max-width: 100%;
+  border-radius: 8px;
+  background: #ffffff;
   color: #0e7490;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.2;
+  padding: 5px 7px;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.provider-calendar-task-list strong.priority {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.provider-calendar-task-list .calendar-more-button {
+  background: #e2e8f0;
+  color: #334155;
 }
 
 .provider-calendar-results {
@@ -3328,18 +3363,16 @@ button:disabled,
   }
 
   .provider-calendar-day {
-    min-height: 52px;
+    min-height: 104px;
     border-radius: 11px;
     font-size: 13px;
     padding: 6px;
   }
 
-  .provider-calendar-day strong {
-    right: 4px;
-    bottom: 4px;
-    min-width: 18px;
-    height: 18px;
+  .provider-calendar-task-list strong,
+  .provider-calendar-task-list .calendar-more-button {
     font-size: 10px;
+    padding: 4px 5px;
   }
 
   .provider-calendar-results-header {

@@ -433,6 +433,7 @@ function PortalPrestador({
   );
   const [dataSelecionada, setDataSelecionada] = useState("");
   const [dataConcluidaSelecionada, setDataConcluidaSelecionada] = useState("");
+  const [diasCalendarioExpandidos, setDiasCalendarioExpandidos] = useState({});
   const [prestadorLogado, setPrestadorLogado] = useState(() => {
     return obterSessaoPrestador(prestadorId);
   });
@@ -546,6 +547,14 @@ function PortalPrestador({
         (tarefa) => obterDataConclusao(tarefa) === dataConcluidaSelecionada,
       )
     : [];
+
+  function alternarDiaCalendarioExpandido(data) {
+    setDiasCalendarioExpandidos((diasAtuais) => ({
+      ...diasAtuais,
+      [data]: !diasAtuais[data],
+    }));
+  }
+
   async function concluirTarefaPrestador(tarefaId) {
     if (tarefasConcluindo[tarefaId]) {
       return;
@@ -885,21 +894,54 @@ function PortalPrestador({
             <div className="provider-calendar-grid">
               {diasDoCalendario.map((dia, index) =>
                 dia ? (
-                  <button
+                  <div
                     key={dia.data}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     className={`provider-calendar-day ${
                       dia.tarefas.length ? "has-tasks" : ""
                     } ${dia.data < dataHoje ? "past-day" : ""} ${
                       dia.data === dataHoje ? "today" : ""
                     } ${dataSelecionada === dia.data ? "active" : ""}`}
                     onClick={() => setDataSelecionada(dia.data)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        setDataSelecionada(dia.data);
+                      }
+                    }}
                   >
                     <span>{dia.dia}</span>
                     {dia.tarefas.length > 0 && (
-                      <strong>{dia.tarefas.length}</strong>
+                      <div className="provider-calendar-task-list">
+                        {(diasCalendarioExpandidos[dia.data]
+                          ? dia.tarefas
+                          : dia.tarefas.slice(0, 3)
+                        ).map((tarefa) => (
+                          <strong
+                            key={tarefa.id}
+                            className={tarefa.prioridade ? "priority" : ""}
+                            title={obterTituloTarefa(tarefa)}
+                          >
+                            {obterTituloTarefa(tarefa)}
+                          </strong>
+                        ))}
+                        {dia.tarefas.length > 3 && (
+                          <button
+                            className="calendar-more-button"
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              alternarDiaCalendarioExpandido(dia.data);
+                            }}
+                          >
+                            {diasCalendarioExpandidos[dia.data]
+                              ? "Recolher"
+                              : `+ ${dia.tarefas.length - 3} mais`}
+                          </button>
+                        )}
+                      </div>
                     )}
-                  </button>
+                  </div>
                 ) : (
                   <div
                     className="provider-calendar-day empty"

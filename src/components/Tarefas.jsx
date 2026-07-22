@@ -274,6 +274,7 @@ function Tarefas({
   const [dataInicioFiltro, setDataInicioFiltro] = useState("");
   const [dataFimFiltro, setDataFimFiltro] = useState("");
   const [buscaApartamento, setBuscaApartamento] = useState("");
+  const [diasCalendarioExpandidos, setDiasCalendarioExpandidos] = useState({});
   const dataAmanha = obterAmanha();
   const dataHoje = obterHojeInput();
   const tarefasPendentes = tarefas
@@ -386,6 +387,13 @@ function Tarefas({
     setDataSelecionada(data);
     setDataAbertaPeloCalendario(true);
     setVisualizacao("data");
+  }
+
+  function alternarDiaCalendarioExpandido(data) {
+    setDiasCalendarioExpandidos((diasAtuais) => ({
+      ...diasAtuais,
+      [data]: !diasAtuais[data],
+    }));
   }
 
   function voltarParaCalendario() {
@@ -545,19 +553,28 @@ function Tarefas({
           <div className="calendar-month-grid">
             {diasDoCalendario.map((dia, index) =>
               dia ? (
-                <button
+                <div
                   key={dia.data}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   className={`calendar-month-day ${
                     dia.tarefas.length ? "has-tasks" : ""
                   } ${dia.data < dataHoje ? "past-day" : ""} ${
                     dia.data === dataHoje ? "today" : ""
                   }`}
                   onClick={() => abrirDataDoCalendario(dia.data)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      abrirDataDoCalendario(dia.data);
+                    }
+                  }}
                 >
                   <span>{dia.dia}</span>
                   <div>
-                    {dia.tarefas.slice(0, 3).map((tarefa) => (
+                    {(diasCalendarioExpandidos[dia.data]
+                      ? dia.tarefas
+                      : dia.tarefas.slice(0, 3)
+                    ).map((tarefa) => (
                       <strong
                         key={tarefa.id}
                         className={tarefa.prioridade ? "priority" : ""}
@@ -567,10 +584,21 @@ function Tarefas({
                       </strong>
                     ))}
                     {dia.tarefas.length > 3 && (
-                      <em>+{dia.tarefas.length - 3}</em>
+                      <button
+                        className="calendar-more-button"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          alternarDiaCalendarioExpandido(dia.data);
+                        }}
+                      >
+                        {diasCalendarioExpandidos[dia.data]
+                          ? "Recolher"
+                          : `+ ${dia.tarefas.length - 3} mais`}
+                      </button>
                     )}
                   </div>
-                </button>
+                </div>
               ) : (
                 <div
                   className="calendar-month-day empty"
