@@ -160,6 +160,46 @@ function compararTarefasPorCheckout(tarefaA, tarefaB) {
   );
 }
 
+function obterRotuloTarefaCalendario(tarefa) {
+  const predio = String(tarefa.predioApartamento || "").trim();
+  const apartamento = String(tarefa.apartamento || "").trim();
+
+  if (predio && apartamento) {
+    return `${predio} - ${apartamento}`;
+  }
+
+  return predio || apartamento || "Apartamento";
+}
+
+function normalizarBusca(valor) {
+  return String(valor || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function tarefaCombinaComBusca(tarefa, busca) {
+  const termo = normalizarBusca(busca);
+
+  if (!termo) {
+    return true;
+  }
+
+  const predio = String(tarefa.predioApartamento || "").trim();
+  const apartamento = String(tarefa.apartamento || "").trim();
+  const camposBusca = [
+    predio,
+    apartamento,
+    `${predio}${apartamento}`,
+    `${predio}apt${apartamento}`,
+    obterRotuloTarefaCalendario(tarefa),
+  ];
+
+  return camposBusca.some((campo) => normalizarBusca(campo).includes(termo));
+}
+
 function montarMensagemWhatsapp(funcionario, tarefasAmanha, dataAmanha) {
   return [
     `Ola, ${funcionario.nome}.`,
@@ -177,6 +217,26 @@ function montarMensagemWhatsapp(funcionario, tarefasAmanha, dataAmanha) {
           )
           .join("\n")
       : "Nenhuma tarefa atribuida para amanha.",
+  ].join("\n");
+}
+
+function montarMensagemWhatsappPeriodo(funcionario, tarefasPeriodo, tituloPeriodo) {
+  return [
+    `Ola, ${funcionario.nome}.`,
+    `Tarefas ${tituloPeriodo}:`,
+    "",
+    tarefasPeriodo.length
+      ? tarefasPeriodo
+          .map(
+            (tarefa, index) =>
+              `${index + 1}. ${obterRotuloTarefaCalendario(tarefa)} - ${
+                tarefa.descricao
+              } - checkout ${formatarDataCompleta(tarefa.checkout)} ${
+                tarefa.horaCheckout || "11:00"
+              }${tarefa.prioridade ? " - PRIORIDADE" : ""}`,
+          )
+          .join("\n")
+      : "Nenhuma tarefa atribuida nesse periodo.",
   ].join("\n");
 }
 
@@ -202,12 +262,18 @@ function Tarefas({
   const [mesCalendario, setMesCalendario] = useState(() =>
     obterMesInput(obterHojeInput()),
   );
+  const [mesFiltroData, setMesFiltroData] = useState(() =>
+    obterMesInput(obterHojeInput()),
+  );
   const [mesRetornoCalendario, setMesRetornoCalendario] = useState(() =>
     obterMesInput(obterHojeInput()),
   );
   const [dataConcluidaSelecionada, setDataConcluidaSelecionada] = useState("");
-  const [dataInicioPeriodo, setDataInicioPeriodo] = useState(obterHojeInput());
+  const [dataInicioPeriodo, setDataInicioPeriodo] = useState("");
   const [dataFimPeriodo, setDataFimPeriodo] = useState("");
+  const [dataInicioFiltro, setDataInicioFiltro] = useState("");
+  const [dataFimFiltro, setDataFimFiltro] = useState("");
+  const [buscaApartamento, setBuscaApartamento] = useState("");
   const dataAmanha = obterAmanha();
   const dataHoje = obterHojeInput();
   const tarefasPendentes = tarefas
@@ -216,6 +282,7 @@ function Tarefas({
         tarefa.status === "Pendente" &&
         (!obterDataCheckout(tarefa) || obterDataCheckout(tarefa) >= dataHoje),
     )
+    .filter((tarefa) => tarefaCombinaComBusca(tarefa, buscaApartamento))
     .sort(compararTarefasPorCheckout);
   const tarefasConcluidas = tarefas
     .filter((tarefa) => tarefa.status === "Concluida")
@@ -230,6 +297,7 @@ function Tarefas({
     (tarefa) => tarefa.prioridade,
   ).length;
   const diasDoCalendario = montarDiasDoMes(mesCalendario, tarefasPendentes);
+  const diasDoFiltroData = montarDiasDoMes(mesFiltroData, tarefasPendentes);
   const tarefasDaDataSelecionada = dataSelecionada
     ? tarefasPendentes.filter(
         (tarefa) => obterDataCheckout(tarefa) === dataSelecionada,
@@ -242,21 +310,49 @@ function Tarefas({
       return false;
     }
 
-    if (dataInicioPeriodo && dataCheckout < dataInicioPeriodo) {
+    if (!dataInicioPeriodo) {
       return false;
     }
 
-    if (dataFimPeriodo && dataCheckout > dataFimPeriodo) {
+    if (!dataFimPeriodo) {
+      return dataCheckout === dataInicioPeriodo;
+    }
+
+    if (dataCheckout < dataInicioPeriodo) {
       return false;
     }
 
-    return Boolean(dataInicioPeriodo || dataFimPeriodo);
+    if (dataCheckout > dataFimPeriodo) {
+      return false;
+    }
+
+    return true;
   });
   const tarefasConcluidasDaDataSelecionada = dataConcluidaSelecionada
     ? tarefasConcluidas.filter(
         (tarefa) => obterDataConclusao(tarefa) === dataConcluidaSelecionada,
       )
     : [];
+  const tarefasFiltroDataVisiveis = dataSelecionada
+    ? tarefasDaDataSelecionada
+    : tarefasDoPeriodoSelecionado;
+  const tituloPeriodoWhatsapp = dataSelecionada
+    ? `de ${formatarDataCompleta(dataSelecionada)}`
+    : dataInicioPeriodo && dataFimPeriodo
+      ? `de ${formatarDataCompleta(dataInicioPeriodo)} ate ${formatarDataCompleta(
+          dataFimPeriodo,
+        )}`
+      : dataInicioPeriodo
+        ? `de ${formatarDataCompleta(dataInicioPeriodo)}`
+        : "filtradas";
+  const gruposWhatsappFiltroData = funcionarios
+    .map((funcionario) => ({
+      funcionario,
+      tarefas: tarefasFiltroDataVisiveis.filter(
+        (tarefa) => String(tarefa.funcionarioId) === String(funcionario.id),
+      ),
+    }))
+    .filter((grupo) => grupo.tarefas.length);
   const gruposPrestadoresBase = [
     ...funcionarios.map((funcionario) => ({
       tipo: "funcionario",
@@ -296,6 +392,42 @@ function Tarefas({
     setMesCalendario(mesRetornoCalendario);
     setDataAbertaPeloCalendario(false);
     setVisualizacao("calendario");
+  }
+
+  function selecionarDataNoFiltro(data) {
+    if (dataInicioFiltro && !dataFimFiltro && data > dataInicioFiltro) {
+      setDataFimFiltro(data);
+      return;
+    }
+
+    setDataInicioFiltro(data);
+    setDataFimFiltro("");
+  }
+
+  function aplicarFiltroData() {
+    if (!dataInicioFiltro) {
+      return;
+    }
+
+    setDataInicioPeriodo(dataInicioFiltro);
+    setDataFimPeriodo(dataFimFiltro);
+    setDataSelecionada(dataFimFiltro ? "" : dataInicioFiltro);
+  }
+
+  function obterClasseDiaFiltro(dia) {
+    if (!dia) {
+      return "";
+    }
+
+    const selecionado =
+      dia.data === dataInicioFiltro || dia.data === dataFimFiltro;
+    const noIntervalo =
+      dataInicioFiltro &&
+      dataFimFiltro &&
+      dia.data > dataInicioFiltro &&
+      dia.data < dataFimFiltro;
+
+    return `${selecionado ? "active" : ""} ${noIntervalo ? "in-range" : ""}`;
   }
 
   async function atualizarDadosComBloqueio() {
@@ -358,9 +490,22 @@ function Tarefas({
       <div className="task-results-bar">
         <div>
           <strong>{tarefasPendentes.length} tarefa(s)</strong>
-          <span>Exibindo checkouts pendentes</span>
+          <span>
+            {buscaApartamento
+              ? `Filtrando por ${buscaApartamento}`
+              : "Exibindo checkouts pendentes"}
+          </span>
         </div>
         <div className="task-results-tags">
+          <label className="task-search-control">
+            <span>Buscar apt</span>
+            <input
+              type="search"
+              value={buscaApartamento}
+              onChange={(event) => setBuscaApartamento(event.target.value)}
+              placeholder="Ex: aquarela-211"
+            />
+          </label>
           <span>{tarefasSemResponsavel} sem responsavel</span>
           <span>{tarefasPrioritarias} prioridade</span>
           <span>{tarefasAmanhaTotal} para amanha</span>
@@ -416,8 +561,9 @@ function Tarefas({
                       <strong
                         key={tarefa.id}
                         className={tarefa.prioridade ? "priority" : ""}
+                        title={obterRotuloTarefaCalendario(tarefa)}
                       >
-                        Apt {tarefa.apartamento}
+                        {obterRotuloTarefaCalendario(tarefa)}
                       </strong>
                     ))}
                     {dia.tarefas.length > 3 && (
@@ -464,63 +610,149 @@ function Tarefas({
               </button>
             </div>
           ) : (
-            <div className="date-picker-card">
-              <label htmlFor="data-tarefas">Escolha uma data</label>
-              <input
-                id="data-tarefas"
-                type="date"
-                value={dataSelecionada}
-                onChange={(event) => setDataSelecionada(event.target.value)}
-              />
-              <label htmlFor="data-inicio-periodo">De hoje ate uma data</label>
-              <div className="date-range-controls">
+            <div className="date-filter-toolbar">
+              <div className="date-filter-status">
+                <strong>
+                  {dataInicioPeriodo
+                    ? dataFimPeriodo
+                      ? `${formatarDataCompleta(
+                          dataInicioPeriodo,
+                        )} ate ${formatarDataCompleta(dataFimPeriodo)}`
+                      : formatarDataCompleta(dataInicioPeriodo)
+                    : "Selecione uma data"}
+                </strong>
+                <span>
+                  {dataInicioFiltro
+                    ? dataFimFiltro
+                      ? "Intervalo pronto para ver"
+                      : "Dia selecionado"
+                    : "Clique em um dia ou em duas datas para intervalo"}
+                </span>
+              </div>
+
+              <div className="date-filter-calendar">
+                <div className="date-filter-calendar-header">
+                <strong>{formatarMes(mesFiltroData)}</strong>
                 <input
-                  id="data-inicio-periodo"
-                  type="date"
-                  value={dataInicioPeriodo}
-                  onChange={(event) => setDataInicioPeriodo(event.target.value)}
-                />
-                <input
-                  aria-label="Data final do periodo"
-                  type="date"
-                  value={dataFimPeriodo}
-                  onChange={(event) => setDataFimPeriodo(event.target.value)}
+                  type="month"
+                  value={mesFiltroData}
+                  onChange={(event) => setMesFiltroData(event.target.value)}
+                  aria-label="Escolher mes do filtro"
                 />
               </div>
-              {dataSelecionada && (
-                <strong>
-                  {tarefasDaDataSelecionada.length} tarefa(s) em{" "}
-                  {formatarDataCompleta(dataSelecionada)}
-                </strong>
-              )}
-              {!dataSelecionada && (dataInicioPeriodo || dataFimPeriodo) && (
-                <strong>
-                  {tarefasDoPeriodoSelecionado.length} tarefa(s) no periodo
-                </strong>
-              )}
+
+              <div className="date-filter-weekdays">
+                {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"].map((dia) => (
+                  <span key={dia}>{dia}</span>
+                ))}
+              </div>
+
+              <div className="date-filter-grid">
+                {diasDoFiltroData.map((dia, index) =>
+                  dia ? (
+                    <button
+                      key={dia.data}
+                      type="button"
+                      className={`date-filter-day ${
+                        dia.tarefas.length ? "has-tasks" : ""
+                      } ${dia.data < dataHoje ? "past-day" : ""} ${
+                        dia.data === dataHoje ? "today" : ""
+                      } ${obterClasseDiaFiltro(dia)}`}
+                      onClick={() => selecionarDataNoFiltro(dia.data)}
+                    >
+                      <span>{dia.dia}</span>
+                      {dia.tarefas.length > 0 && <small>{dia.tarefas.length}</small>}
+                    </button>
+                  ) : (
+                    <div
+                      className="date-filter-day empty"
+                      key={`filter-empty-${index}`}
+                    />
+                  ),
+                )}
+              </div>
+
+                <button
+                  className="primary-action date-filter-apply"
+                  type="button"
+                  disabled={!dataInicioFiltro}
+                  onClick={aplicarFiltroData}
+                >
+                  Ver
+                </button>
+              </div>
             </div>
           )}
 
-          {dataSelecionada || dataInicioPeriodo || dataFimPeriodo ? (
+          {dataSelecionada || dataInicioPeriodo ? (
             (dataSelecionada
               ? tarefasDaDataSelecionada
               : tarefasDoPeriodoSelecionado
             ).length ? (
-              <div className="list-grid">
-                {(dataSelecionada
-                  ? tarefasDaDataSelecionada
-                  : tarefasDoPeriodoSelecionado
-                ).map((tarefa) => (
-                  <TarefaCard
-                    key={tarefa.id}
-                    funcionarios={funcionarios}
-                    onAtribuirFuncionario={onAtribuirFuncionario}
-                    onAtualizarTarefa={onAtualizarTarefa}
-                    selectId={`data-funcionario-${tarefa.id}`}
-                    tarefa={tarefa}
-                  />
-                ))}
-              </div>
+              <>
+                {gruposWhatsappFiltroData.length > 0 && (
+                  <div className="date-whatsapp-panel">
+                    {gruposWhatsappFiltroData.map((grupo) => {
+                      const telefoneFuncionario = limparTelefone(
+                        grupo.funcionario.telefone,
+                      );
+                      const linkWhatsapp = telefoneFuncionario
+                        ? `https://wa.me/${telefoneFuncionario}?text=${encodeURIComponent(
+                            montarMensagemWhatsappPeriodo(
+                              grupo.funcionario,
+                              grupo.tarefas,
+                              tituloPeriodoWhatsapp,
+                            ),
+                          )}`
+                        : "";
+
+                      return (
+                        <div
+                          className="whatsapp-task-box compact"
+                          key={grupo.funcionario.id}
+                        >
+                          <div>
+                            <strong>{grupo.funcionario.nome}</strong>
+                            <p>
+                              {grupo.tarefas.length} tarefa(s){" "}
+                              {tituloPeriodoWhatsapp}.
+                            </p>
+                          </div>
+                          {linkWhatsapp ? (
+                            <a
+                              href={linkWhatsapp}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              Enviar no WhatsApp
+                            </a>
+                          ) : (
+                            <button type="button" disabled>
+                              Sem telefone
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="list-grid">
+                  {(dataSelecionada
+                    ? tarefasDaDataSelecionada
+                    : tarefasDoPeriodoSelecionado
+                  ).map((tarefa) => (
+                    <TarefaCard
+                      key={tarefa.id}
+                      funcionarios={funcionarios}
+                      onAtribuirFuncionario={onAtribuirFuncionario}
+                      onAtualizarTarefa={onAtualizarTarefa}
+                      selectId={`data-funcionario-${tarefa.id}`}
+                      tarefa={tarefa}
+                    />
+                  ))}
+                </div>
+              </>
             ) : (
               <div className="empty-state">
                 Nenhuma tarefa pendente nessa data.
@@ -708,9 +940,9 @@ function Tarefas({
                       >
                         <div className="task-card-main">
                           <span className="task-apartment-label">
-                            Apartamento
+                            {tarefa.predioApartamento ? "Predio" : "Apartamento"}
                           </span>
-                          <h3>{tarefa.apartamento}</h3>
+                          <h3>{obterRotuloTarefaCalendario(tarefa)}</h3>
                           <p>{tarefa.descricao}</p>
                         </div>
                         <div className="provider-task-done-by">

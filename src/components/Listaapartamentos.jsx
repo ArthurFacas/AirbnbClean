@@ -6,6 +6,50 @@ function obterValor(valor, fallback = "Nao informado") {
   return String(valor || "").trim() || fallback;
 }
 
+function obterRotuloApartamento(apartamento) {
+  const predio = String(
+    apartamento["nome.do.predio"] || apartamento.predio || "",
+  ).trim();
+  const numero = String(apartamento.numero || "").trim();
+
+  if (predio && numero) {
+    return `${predio} - ${numero}`;
+  }
+
+  return predio || numero || "Predio nao informado";
+}
+
+function normalizarBusca(valor) {
+  return String(valor || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function apartamentoCombinaComBusca(apartamento, busca) {
+  const termo = normalizarBusca(busca);
+
+  if (!termo) {
+    return true;
+  }
+
+  const predio = String(
+    apartamento["nome.do.predio"] || apartamento.predio || "",
+  ).trim();
+  const numero = String(apartamento.numero || "").trim();
+  const camposBusca = [
+    predio,
+    numero,
+    `${predio}${numero}`,
+    `${predio}apt${numero}`,
+    obterRotuloApartamento(apartamento),
+  ];
+
+  return camposBusca.some((campo) => normalizarBusca(campo).includes(termo));
+}
+
 function criarFormularioApartamento(apartamento) {
   return {
     Bairro: apartamento.Bairro || apartamento.bairro || "",
@@ -25,7 +69,11 @@ function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
   const [apartamentoEditando, setApartamentoEditando] = useState("");
   const [formulario, setFormulario] = useState({});
   const [mostrarSenhaPorta, setMostrarSenhaPorta] = useState(false);
+  const [buscaApartamento, setBuscaApartamento] = useState("");
   const possuiStatus = apartamentos.some((apartamento) => apartamento.status);
+  const apartamentosFiltrados = apartamentos.filter((apartamento) =>
+    apartamentoCombinaComBusca(apartamento, buscaApartamento),
+  );
 
   function obterStatus(apartamento) {
     return apartamento.status || apartamento.situacao || "Ativo";
@@ -91,7 +139,12 @@ function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
       <div className="apartments-toolbar" aria-label="Ferramentas de apartamentos">
         <label className="apartments-search">
           <span>Buscar</span>
-          <input type="search" placeholder="Buscar apartamento" />
+          <input
+            type="search"
+            value={buscaApartamento}
+            onChange={(event) => setBuscaApartamento(event.target.value)}
+            placeholder="Ex: aquarela-211"
+          />
         </label>
 
         {possuiStatus && (
@@ -119,14 +172,14 @@ function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
             Cadastrar primeiro apartamento
           </button>
         </div>
-      ) : (
-        <div className="apartment-grid">
-          {apartamentos.map((apartamento) => {
-            const editando =
-              apartamentoEditando === String(apartamento.id);
+      ) : apartamentosFiltrados.length ? (
+          <div className="apartment-grid">
+            {apartamentosFiltrados.map((apartamento) => {
+              const editando =
+                apartamentoEditando === String(apartamento.id);
 
-            return (
-              <article className="info-card apartment-card" key={apartamento.id}>
+              return (
+                <article className="info-card apartment-card" key={apartamento.id}>
                 {editando ? (
                   <form
                     className="apartment-edit-form"
@@ -150,7 +203,9 @@ function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
                       required
                     />
 
-                    <label htmlFor={`apt-numero-${apartamento.id}`}>Numero</label>
+                    <label htmlFor={`apt-numero-${apartamento.id}`}>
+                      Numero do apt
+                    </label>
                     <input
                       id={`apt-numero-${apartamento.id}`}
                       name="numero"
@@ -243,10 +298,7 @@ function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
                     <div className="apartment-card-top">
                       <div>
                         <span>Predio</span>
-                        <h3>
-                          {apartamento["nome.do.predio"] ||
-                            "Predio nao informado"}
-                        </h3>
+                        <h3>{obterRotuloApartamento(apartamento)}</h3>
                       </div>
                       <strong className="apartment-status-badge">
                         {obterStatus(apartamento)}
@@ -254,7 +306,7 @@ function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
                     </div>
 
                     <div className="apartment-location">
-                      <span>Numero</span>
+                      <span>Apartamento</span>
                       <p>{apartamento.numero || "Numero nao informado"}</p>
                     </div>
 
@@ -299,9 +351,15 @@ function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
                     </div>
                   </>
                 )}
-              </article>
-            );
-          })}
+                </article>
+              );
+            })}
+          </div>
+      ) : (
+        <div className="apartments-empty-state">
+          <div aria-hidden="true">AP</div>
+          <h2>Nenhum apartamento encontrado</h2>
+          <p>Tente buscar pelo nome do predio ou pelo numero do apartamento.</p>
         </div>
       )}
     </div>

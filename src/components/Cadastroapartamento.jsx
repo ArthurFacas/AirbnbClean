@@ -94,13 +94,14 @@ function CadastroApartamento({ onCadastrar }) {
           required
         />
 
-        <label htmlFor="numero">Numero</label>
+        <label htmlFor="numero">Numero do apt</label>
         <input
           type="text"
           id="numero"
           name="numero"
           value={formulario.numero}
           onChange={atualizarCampo}
+          placeholder="Ex: 211"
           required
         />
 

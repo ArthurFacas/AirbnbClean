@@ -89,6 +89,17 @@ function compararTarefas(tarefaA, tarefaB) {
   );
 }
 
+function obterTituloTarefa(tarefa) {
+  const predio = String(tarefa.predioApartamento || "").trim();
+  const apartamento = String(tarefa.apartamento || "").trim();
+
+  if (predio && apartamento) {
+    return `${predio} - ${apartamento}`;
+  }
+
+  return predio || apartamento || "Apartamento";
+}
+
 function montarDiasDoMes(dataMes, tarefasPendentes, obterData = obterDataCheckout) {
   const [ano, mes] = dataMes.split("-").map(Number);
   const primeiroDia = new Date(ano, mes - 1, 1);
@@ -615,7 +626,7 @@ function PortalPrestador({
         key={tarefa.id}
       >
         <div className="provider-task-top">
-          <strong>Apt {tarefa.apartamento}</strong>
+          <strong>{obterTituloTarefa(tarefa)}</strong>
           <div>
             {concluida && <span>Concluida</span>}
             {!concluida && tarefa.prioridade && <span>⚠ Prioridade</span>}

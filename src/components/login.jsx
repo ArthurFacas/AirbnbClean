@@ -28,6 +28,20 @@ function Login({ onEntrar }) {
   const navigate = useNavigate();
   const criandoConta = modo === "criar";
 
+  async function lerRespostaJson(resposta) {
+    const texto = await resposta.text();
+
+    if (!texto) {
+      return {};
+    }
+
+    try {
+      return JSON.parse(texto);
+    } catch {
+      throw new Error("Resposta invalida do servidor. Verifique se a API local esta rodando.");
+    }
+  }
+
   function atualizarLogin(event) {
     const { name, value } = event.target;
     setLogin((dados) => ({ ...dados, [name]: value }));
@@ -104,7 +118,7 @@ function Login({ onEntrar }) {
           body: JSON.stringify(criandoConta ? cadastro : login),
         },
       );
-      const dados = await resposta.json();
+      const dados = await lerRespostaJson(resposta);
 
       if (!resposta.ok) {
         throw new Error(dados.erro || "Nao foi possivel entrar.");

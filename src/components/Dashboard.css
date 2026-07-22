@@ -798,6 +798,17 @@
   box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.24);
 }
 
+.calendar-month-day.active {
+  border-color: #0e7490;
+  background: #ecfeff;
+  box-shadow: inset 0 0 0 2px rgba(14, 116, 144, 0.2);
+}
+
+.calendar-month-day.in-range {
+  border-color: #bae6fd;
+  background: #eff6ff;
+}
+
 .calendar-month-day.today > span,
 .provider-calendar-day.today > span {
   color: #1d4ed8;
@@ -891,6 +902,169 @@
 .date-picker-card strong {
   color: #0e7490;
   font-size: 14px;
+}
+
+.date-filter-calendar {
+  display: grid;
+  gap: 10px;
+}
+
+.date-filter-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.date-filter-status {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #dbe4f0;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.date-filter-status strong {
+  color: #172033;
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.date-filter-status span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.date-filter-calendar {
+  width: min(100%, 340px);
+  margin-left: auto;
+  padding: 10px;
+  border: 1px solid #dbe4f0;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(23, 32, 51, 0.06);
+}
+
+.date-filter-calendar-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.date-filter-calendar-header strong {
+  color: #172033;
+  font-size: 15px;
+  font-weight: 950;
+  text-transform: capitalize;
+}
+
+.date-filter-calendar-header input {
+  width: 126px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  color: #172033;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 7px;
+}
+
+.date-filter-weekdays,
+.date-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.date-filter-weekdays span {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 950;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.date-filter-day {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 34px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  background: #f8fafc;
+  color: #172033;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.date-filter-day.empty {
+  border-color: transparent;
+  background: transparent;
+  cursor: default;
+}
+
+.date-filter-day.has-tasks {
+  border-color: #bae6fd;
+  background: #ffffff;
+}
+
+.date-filter-day.today {
+  border-color: #2563eb;
+}
+
+.date-filter-day.active {
+  border-color: #0e7490;
+  background: #ecfeff;
+  box-shadow: inset 0 0 0 2px rgba(14, 116, 144, 0.18);
+}
+
+.date-filter-day.in-range {
+  border-color: #bae6fd;
+  background: #eff6ff;
+}
+
+.date-filter-day small {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  color: #0e7490;
+  font-size: 9px;
+  font-weight: 950;
+}
+
+.date-filter-apply {
+  width: 100%;
+  min-height: 38px;
+}
+
+.date-filter-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.date-filter-summary strong {
+  color: #0e7490;
+  font-size: 14px;
+}
+
+.date-filter-summary span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.date-whatsapp-panel {
+  display: grid;
+  gap: 10px;
 }
 
 .provider-picker {
@@ -1203,8 +1377,36 @@
 
 .task-results-tags {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.task-search-control {
+  display: grid;
+  gap: 4px;
+  min-width: 190px;
+}
+
+.task-search-control span {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.task-search-control input {
+  min-height: 36px;
+  border: 1px solid #dbe4f0;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #172033;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 0 12px;
 }
 
 .task-results-tags span {
@@ -1213,6 +1415,13 @@
   border-radius: 999px;
   background: #eef7f8;
   color: #155e75;
+}
+
+.task-results-tags .task-search-control span {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #64748b;
 }
 
 .task-refresh-button {
@@ -2484,6 +2693,12 @@ button:disabled,
   overflow-wrap: anywhere;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.task-apartment-small {
+  color: #0e7490;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .task-card-main p {

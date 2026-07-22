@@ -68,6 +68,17 @@ function funcionarioNoMesmoBairro(funcionario, tarefa) {
   );
 }
 
+function obterTituloTarefa(tarefa) {
+  const predio = String(tarefa.predioApartamento || "").trim();
+  const apartamento = String(tarefa.apartamento || "").trim();
+
+  if (predio && apartamento) {
+    return `${predio} - ${apartamento}`;
+  }
+
+  return predio || apartamento || "Apartamento";
+}
+
 function TarefaCard({
   tarefa,
   funcionarios,
@@ -95,6 +106,7 @@ function TarefaCard({
     : false;
   const responsavel = funcionario?.nome || "Nao atribuido";
   const observacao = String(tarefa.observacaoPrestador || "").trim();
+  const tituloTarefa = obterTituloTarefa(tarefa);
 
   function editarFuncionario() {
     alert("Selecione outro prestador de servico para editar esta tarefa.");
@@ -128,8 +140,10 @@ function TarefaCard({
       </div>
 
       <div className="task-card-main">
-        <span className="task-apartment-label">Apartamento</span>
-        <h3>{tarefa.apartamento}</h3>
+        <span className="task-apartment-label">
+          {tarefa.predioApartamento ? "Predio" : "Apartamento"}
+        </span>
+        <h3>{tituloTarefa}</h3>
         <p>{formatarDescricao(tarefa.descricao)}</p>
       </div>
 
