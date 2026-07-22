@@ -203,6 +203,7 @@ function App() {
   const [apartamentos, setApartamentos] = useState([]);
   const [tarefas, setTarefas] = useState([]);
   const [bancoCarregado, setBancoCarregado] = useState(false);
+  const [usuarioEstadoCarregadoId, setUsuarioEstadoCarregadoId] = useState("");
 
   const carregarEstadoUsuario = useCallback(async function carregarEstadoUsuario(
     usuarioId,
@@ -239,6 +240,7 @@ function App() {
         funcionariosCarregados,
       ),
     );
+    setUsuarioEstadoCarregadoId(String(usuarioId));
   }, []);
 
   useEffect(() => {
@@ -247,6 +249,7 @@ function App() {
         setFuncionarios([]);
         setApartamentos([]);
         setTarefas([]);
+        setUsuarioEstadoCarregadoId("");
         setBancoCarregado(true);
         return;
       }
@@ -258,6 +261,7 @@ function App() {
         setFuncionarios([]);
         setApartamentos([]);
         setTarefas([]);
+        setUsuarioEstadoCarregadoId("");
       } finally {
         setBancoCarregado(true);
       }
@@ -275,7 +279,11 @@ function App() {
   }, [usuarioLogado]);
 
   useEffect(() => {
-    if (!bancoCarregado || !usuarioLogado?.id) {
+    if (
+      !bancoCarregado ||
+      !usuarioLogado?.id ||
+      usuarioEstadoCarregadoId !== String(usuarioLogado.id)
+    ) {
       return;
     }
 
@@ -291,7 +299,14 @@ function App() {
         tarefas,
       }),
     }).catch(() => {});
-  }, [apartamentos, bancoCarregado, funcionarios, tarefas, usuarioLogado?.id]);
+  }, [
+    apartamentos,
+    bancoCarregado,
+    funcionarios,
+    tarefas,
+    usuarioEstadoCarregadoId,
+    usuarioLogado?.id,
+  ]);
 
   const hojeInput = obterHojeInput();
   const tarefasPendentes = tarefas.filter(
@@ -573,25 +588,30 @@ function App() {
           horaCheckout: apartamento.horaCheckout || "11:00",
         }
       : { ...apartamento };
-
-    setApartamentos((apartamentosAtuais) => [
-      ...apartamentosAtuais,
-      { ...apartamentoCompleto, id: apartamentoId },
-    ]);
-
-    if (reservas.length) {
-      setTarefas((tarefasAtuais) => [
-        ...tarefasAtuais,
-        ...montarTarefasIcal(
+    const novoApartamento = { ...apartamentoCompleto, id: apartamentoId };
+    const apartamentosAtualizados = [...apartamentos, novoApartamento];
+    const tarefasNovas = reservas.length
+      ? montarTarefasIcal(
           apartamentoCompleto,
           apartamentoId,
           reservas,
           calendario?.todasReservas || reservas,
           [],
           funcionarios,
-        ),
-      ]);
-    }
+        )
+      : [];
+    const tarefasAtualizadas = reservas.length
+      ? [...tarefas, ...tarefasNovas]
+      : tarefas;
+
+    await salvarEstadoAtualizado({
+      funcionarios,
+      apartamentos: apartamentosAtualizados,
+      tarefas: tarefasAtualizadas,
+    });
+
+    setApartamentos(apartamentosAtualizados);
+    setTarefas(tarefasAtualizadas);
   }
 
   async function excluirApartamento(id) {
@@ -670,11 +690,17 @@ function App() {
   }
 
   function atribuirFuncionarioTarefa(tarefaId, funcionarioId) {
-    setTarefas((tarefasAtuais) =>
-      tarefasAtuais.map((tarefa) =>
-        tarefa.id === tarefaId ? { ...tarefa, funcionarioId } : tarefa,
-      ),
+    const tarefasAtualizadas = tarefas.map((tarefa) =>
+      tarefa.id === tarefaId ? { ...tarefa, funcionarioId } : tarefa,
     );
+
+    setTarefas(tarefasAtualizadas);
+
+    salvarEstadoAtualizado({
+      funcionarios,
+      apartamentos,
+      tarefas: tarefasAtualizadas,
+    }).catch(() => {});
   }
 
   function atualizarTarefa(tarefaId, campos) {
@@ -692,17 +718,23 @@ function App() {
   }
 
   function concluirTarefa(tarefaId) {
-    setTarefas((tarefasAtuais) =>
-      tarefasAtuais.map((tarefa) =>
-        tarefa.id === tarefaId
-          ? {
-              ...tarefa,
-              status: "Concluida",
-              concluidaEm: tarefa.concluidaEm || new Date().toISOString(),
-            }
-          : tarefa,
-      ),
+    const tarefasAtualizadas = tarefas.map((tarefa) =>
+      tarefa.id === tarefaId
+        ? {
+            ...tarefa,
+            status: "Concluida",
+            concluidaEm: tarefa.concluidaEm || new Date().toISOString(),
+          }
+        : tarefa,
     );
+
+    setTarefas(tarefasAtualizadas);
+
+    salvarEstadoAtualizado({
+      funcionarios,
+      apartamentos,
+      tarefas: tarefasAtualizadas,
+    }).catch(() => {});
   }
 
   function sair() {
