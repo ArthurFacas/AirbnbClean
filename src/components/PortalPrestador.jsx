@@ -206,6 +206,7 @@ function removerSessaoPrestador(prestadorId) {
 function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
   const [modo, setModo] = useState("entrar");
   const [email, setEmail] = useState(prestador?.email || "");
+  const [telefone, setTelefone] = useState("");
   const [senha, setSenha] = useState("");
   const [confirmarSenha, setConfirmarSenha] = useState("");
   const [mostrarSenha, setMostrarSenha] = useState(false);
@@ -274,6 +275,7 @@ function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
           body: JSON.stringify({
             funcionarioId: prestadorId,
             email,
+            telefone,
             senha,
             confirmarSenha,
           }),
@@ -287,6 +289,7 @@ function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
 
       if (modo === "recuperar") {
         setModo("entrar");
+        setTelefone("");
         setSenha("");
         setConfirmarSenha("");
         setSucesso("Senha alterada. Entre com a nova senha.");
@@ -378,6 +381,20 @@ function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
             </>
           )}
 
+          {modo === "recuperar" && (
+            <>
+              <label htmlFor="prestador-telefone">WhatsApp cadastrado</label>
+              <input
+                id="prestador-telefone"
+                type="tel"
+                value={telefone}
+                onChange={(event) => setTelefone(event.target.value)}
+                placeholder="(11) 99999-9999"
+                required
+              />
+            </>
+          )}
+
           {erro && <p className="provider-auth-error">{erro}</p>}
           {sucesso && <p className="provider-auth-success">{sucesso}</p>}
 
@@ -404,6 +421,7 @@ function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
                 setModo("recuperar");
                 setErro("");
                 setSucesso("");
+                setTelefone("");
                 setSenha("");
                 setConfirmarSenha("");
               }}
@@ -421,6 +439,7 @@ function PrestadorAcesso({ prestadorId, prestador, onEntrar }) {
                 setModo("entrar");
                 setErro("");
                 setSucesso("");
+                setTelefone("");
                 setSenha("");
                 setConfirmarSenha("");
               }}

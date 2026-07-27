@@ -7,9 +7,19 @@ const loginInicial = {
   senha: "",
 };
 
+const recuperacaoGestaoInicial = {
+  email: "",
+  cpf: "",
+  telefone: "",
+  senha: "",
+  confirmarSenha: "",
+};
+
 const prestadorInicial = {
   email: "",
+  telefone: "",
   senha: "",
+  confirmarSenha: "",
 };
 
 const conviteInicial = {
@@ -39,6 +49,9 @@ function Login({ onEntrar }) {
     location.pathname.startsWith("/convite/") ? "convite" : "selecionar",
   );
   const [login, setLogin] = useState(loginInicial);
+  const [recuperacaoGestao, setRecuperacaoGestao] = useState(
+    recuperacaoGestaoInicial,
+  );
   const [prestador, setPrestador] = useState(prestadorInicial);
   const [convite, setConvite] = useState(conviteInicial);
   const [erro, setErro] = useState("");
@@ -113,6 +126,24 @@ function Login({ onEntrar }) {
   function atualizarLogin(event) {
     const { name, value } = event.target;
     setLogin((dados) => ({ ...dados, [name]: value }));
+  }
+
+  function formatarCpf(valor) {
+    const numeros = String(valor || "").replace(/\D/g, "").slice(0, 11);
+
+    return numeros
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+  }
+
+  function atualizarRecuperacaoGestao(event) {
+    const { name, value } = event.target;
+
+    setRecuperacaoGestao((dados) => ({
+      ...dados,
+      [name]: name === "cpf" ? formatarCpf(value) : value,
+    }));
   }
 
   function atualizarPrestador(event) {
@@ -219,6 +250,81 @@ function Login({ onEntrar }) {
     }
   }
 
+  async function recuperarSenhaGestao(event) {
+    event.preventDefault();
+
+    if (carregando) {
+      return;
+    }
+
+    setErro("");
+    setSucesso("");
+    setCarregando(true);
+
+    try {
+      const resposta = await fetch("/api/auth/recover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(recuperacaoGestao),
+      });
+      const dados = await lerRespostaJson(resposta);
+
+      if (!resposta.ok) {
+        throw new Error(dados.erro || "Nao foi possivel recuperar a senha.");
+      }
+
+      setLogin({ ...loginInicial, email: recuperacaoGestao.email });
+      setRecuperacaoGestao(recuperacaoGestaoInicial);
+      setModo("gestao");
+      setSucesso("Senha alterada. Entre com a nova senha.");
+    } catch (erroAtual) {
+      setErro(erroAtual.message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  async function recuperarSenhaPrestador(event) {
+    event.preventDefault();
+
+    if (carregando) {
+      return;
+    }
+
+    if (prestador.senha !== prestador.confirmarSenha) {
+      setErro("As senhas precisam ser iguais.");
+      return;
+    }
+
+    setErro("");
+    setSucesso("");
+    setCarregando(true);
+
+    try {
+      const resposta = await fetch("/api/provider/recover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(prestador),
+      });
+      const dados = await lerRespostaJson(resposta);
+
+      if (!resposta.ok) {
+        throw new Error(dados.erro || "Nao foi possivel recuperar a senha.");
+      }
+
+      setPrestador({
+        ...prestadorInicial,
+        email: dados.prestador?.email || prestador.email,
+      });
+      setModo("prestador");
+      setSucesso("Senha alterada. Entre com a nova senha.");
+    } catch (erroAtual) {
+      setErro(erroAtual.message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
   async function cadastrarGestora(event) {
     event.preventDefault();
 
@@ -284,8 +390,12 @@ function Login({ onEntrar }) {
               ? "Acesso restrito"
               : modo === "prestador"
                 ? "Sou prestador"
+                : modo === "prestador-recuperar"
+                  ? "Recuperar senha"
                 : modo === "convite"
                   ? "Criar meu acesso"
+                  : modo === "gestao-recuperar"
+                    ? "Recuperar senha"
                   : "Sou da gestao"}
           </h1>
           <p>
@@ -293,8 +403,12 @@ function Login({ onEntrar }) {
               ? "Escolha como deseja acessar o sistema."
               : modo === "prestador"
                 ? "Entre para ver somente as tarefas designadas para voce."
+                : modo === "prestador-recuperar"
+                  ? "Confirme seus dados para criar uma nova senha."
                 : modo === "convite"
                   ? "Crie sua senha usando o convite enviado pelo Master."
+                  : modo === "gestao-recuperar"
+                    ? "Confirme seus dados de cadastro para criar uma nova senha."
                   : "Acesse o painel administrativo da CleanHost."}
           </p>
         </div>
@@ -382,8 +496,106 @@ function Login({ onEntrar }) {
               </button>
             </div>
 
+            <button
+              className="login-back-button"
+              type="button"
+              onClick={() => {
+                setModo("gestao-recuperar");
+                setErro("");
+                setSucesso("");
+              }}
+            >
+              Recuperar senha
+            </button>
+
             <button className="login-back-button" type="button" onClick={voltarSelecao}>
               Voltar
+            </button>
+          </form>
+        )}
+
+        {modo === "gestao-recuperar" && (
+          <form className="login-form" onSubmit={recuperarSenhaGestao}>
+            <div className="login-field">
+              <label htmlFor="recuperarGestaoEmail">Email</label>
+              <input
+                id="recuperarGestaoEmail"
+                name="email"
+                type="email"
+                value={recuperacaoGestao.email}
+                onChange={atualizarRecuperacaoGestao}
+                placeholder="voce@email.com"
+                required
+              />
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="recuperarGestaoCpf">CPF</label>
+              <input
+                id="recuperarGestaoCpf"
+                name="cpf"
+                type="text"
+                value={recuperacaoGestao.cpf}
+                onChange={atualizarRecuperacaoGestao}
+                placeholder="000.000.000-00"
+                maxLength={14}
+                required
+              />
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="recuperarGestaoTelefone">WhatsApp</label>
+              <input
+                id="recuperarGestaoTelefone"
+                name="telefone"
+                type="tel"
+                value={recuperacaoGestao.telefone}
+                onChange={atualizarRecuperacaoGestao}
+                placeholder="(11) 99999-9999"
+                required
+              />
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="recuperarGestaoSenha">Nova senha</label>
+              <input
+                id="recuperarGestaoSenha"
+                name="senha"
+                type="password"
+                value={recuperacaoGestao.senha}
+                onChange={atualizarRecuperacaoGestao}
+                minLength={6}
+                required
+              />
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="recuperarGestaoConfirmarSenha">Confirmar senha</label>
+              <input
+                id="recuperarGestaoConfirmarSenha"
+                name="confirmarSenha"
+                type="password"
+                value={recuperacaoGestao.confirmarSenha}
+                onChange={atualizarRecuperacaoGestao}
+                minLength={6}
+                required
+              />
+            </div>
+
+            {erro && <p className="login-error">{erro}</p>}
+
+            <div className="login-actions">
+              <button type="submit" disabled={carregando}>
+                {carregando ? "Aguarde..." : "Alterar senha"}
+              </button>
+            </div>
+
+            <button
+              className="login-back-button"
+              type="button"
+              onClick={() => setModo("gestao")}
+            >
+              Voltar para entrar
             </button>
           </form>
         )}
@@ -434,8 +646,92 @@ function Login({ onEntrar }) {
               </button>
             </div>
 
+            <button
+              className="login-back-button"
+              type="button"
+              onClick={() => {
+                setModo("prestador-recuperar");
+                setErro("");
+                setSucesso("");
+              }}
+            >
+              Recuperar senha
+            </button>
+
             <button className="login-back-button" type="button" onClick={voltarSelecao}>
               Voltar
+            </button>
+          </form>
+        )}
+
+        {modo === "prestador-recuperar" && (
+          <form className="login-form" onSubmit={recuperarSenhaPrestador}>
+            <div className="login-field">
+              <label htmlFor="recuperarPrestadorEmail">Email</label>
+              <input
+                id="recuperarPrestadorEmail"
+                name="email"
+                type="email"
+                value={prestador.email}
+                onChange={atualizarPrestador}
+                placeholder="Seu email cadastrado"
+                required
+              />
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="recuperarPrestadorTelefone">WhatsApp</label>
+              <input
+                id="recuperarPrestadorTelefone"
+                name="telefone"
+                type="tel"
+                value={prestador.telefone}
+                onChange={atualizarPrestador}
+                placeholder="(11) 99999-9999"
+                required
+              />
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="recuperarPrestadorSenha">Nova senha</label>
+              <input
+                id="recuperarPrestadorSenha"
+                name="senha"
+                type="password"
+                value={prestador.senha}
+                onChange={atualizarPrestador}
+                minLength={6}
+                required
+              />
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="recuperarPrestadorConfirmarSenha">Confirmar senha</label>
+              <input
+                id="recuperarPrestadorConfirmarSenha"
+                name="confirmarSenha"
+                type="password"
+                value={prestador.confirmarSenha}
+                onChange={atualizarPrestador}
+                minLength={6}
+                required
+              />
+            </div>
+
+            {erro && <p className="login-error">{erro}</p>}
+
+            <div className="login-actions">
+              <button type="submit" disabled={carregando}>
+                {carregando ? "Aguarde..." : "Alterar senha"}
+              </button>
+            </div>
+
+            <button
+              className="login-back-button"
+              type="button"
+              onClick={() => setModo("prestador")}
+            >
+              Voltar para entrar
             </button>
           </form>
         )}

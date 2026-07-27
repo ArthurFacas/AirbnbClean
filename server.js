@@ -1951,6 +1951,64 @@ async function autenticarUsuario(dados) {
   };
 }
 
+async function recuperarSenhaUsuario(dados) {
+  await garantirBanco();
+
+  const email = String(dados.email || "")
+    .trim()
+    .toLowerCase();
+  const cpf = limparNumeros(dados.cpf);
+  const telefone = limparNumeros(dados.telefone);
+  const senha = String(dados.senha || dados.novaSenha || "");
+  const confirmarSenha = String(dados.confirmarSenha || senha);
+
+  if (!validarEmail(email) || cpf.length !== 11 || telefone.length < 10) {
+    const erro = new Error("Dados de recuperacao invalidos.");
+    erro.status = 400;
+    throw erro;
+  }
+
+  if (senha.length < 6 || senha !== confirmarSenha) {
+    const erro = new Error("Senha invalida.");
+    erro.status = 400;
+    throw erro;
+  }
+
+  const usuario = banco
+    .prepare(
+      `SELECT id, email, telefone, cpf, ativo
+       FROM usuarios
+       WHERE email = ?`,
+    )
+    .get(email);
+
+  if (
+    !usuario ||
+    usuario.ativo === 0 ||
+    limparNumeros(usuario.cpf) !== cpf ||
+    limparNumeros(usuario.telefone) !== telefone
+  ) {
+    const erro = new Error("Dados nao conferem com o cadastro.");
+    erro.status = 401;
+    throw erro;
+  }
+
+  const { hash, salt } = criarHashSenha(senha);
+
+  banco
+    .prepare(
+      `UPDATE usuarios
+       SET senha_hash = ?, senha_salt = ?
+       WHERE id = ?`,
+    )
+    .run(hash, salt, usuario.id);
+  banco
+    .prepare("DELETE FROM usuario_sessoes WHERE usuario_id = ?")
+    .run(usuario.id);
+
+  return { ok: true };
+}
+
 async function criarGestora(dados, usuarioAtual) {
   await garantirBanco();
   garantirMaster(usuarioAtual);
@@ -2225,15 +2283,23 @@ async function autenticarPrestador(dados) {
 async function recuperarSenhaPrestador(dados) {
   await garantirBanco();
 
-  const funcionarioId = String(dados.funcionarioId || "");
   const email = String(dados.email || "")
     .trim()
     .toLowerCase();
+  const telefone = limparNumeros(dados.telefone);
   const senha = String(dados.senha || dados.novaSenha || "");
   const confirmarSenha = String(dados.confirmarSenha || senha);
-  const prestador = await buscarPrestador(funcionarioId);
+  const prestador = banco
+    .prepare(
+      `SELECT id, nome, nascimento, email, telefone, cargo, bairro
+       FROM funcionarios
+       WHERE lower(email) = ?
+       ORDER BY id
+       LIMIT 1`,
+    )
+    .get(email);
 
-  if (!prestador || !validarEmail(email)) {
+  if (!prestador || !validarEmail(email) || telefone.length < 10) {
     const erro = new Error("Email invalido.");
     erro.status = 400;
     throw erro;
@@ -2241,13 +2307,8 @@ async function recuperarSenhaPrestador(dados) {
 
   garantirFuncionarioEhPrestador(prestador);
 
-  if (
-    email !==
-    String(prestador.email || "")
-      .trim()
-      .toLowerCase()
-  ) {
-    const erro = new Error("Email nao confere com o cadastro do prestador.");
+  if (limparNumeros(prestador.telefone) !== telefone) {
+    const erro = new Error("Dados nao conferem com o cadastro do prestador.");
     erro.status = 401;
     throw erro;
   }
@@ -2564,6 +2625,23 @@ const servidor = createServer(async (requisicao, resposta) => {
     } catch (erro) {
       enviarJson(resposta, erro.status || 500, {
         erro: erro.message || "Nao foi possivel entrar.",
+      });
+    }
+    return;
+  }
+
+  if (requisicao.url?.startsWith("/api/auth/recover")) {
+    try {
+      if (requisicao.method !== "POST") {
+        enviarJson(resposta, 405, { erro: "Metodo nao permitido." });
+        return;
+      }
+
+      await recuperarSenhaUsuario(JSON.parse(await lerCorpo(requisicao)));
+      enviarJson(resposta, 200, { ok: true });
+    } catch (erro) {
+      enviarJson(resposta, erro.status || 500, {
+        erro: erro.message || "Nao foi possivel recuperar a senha.",
       });
     }
     return;

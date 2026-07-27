@@ -406,6 +406,31 @@ function App() {
       apartamentos,
       tarefas: tarefasAtualizadas,
     });
+
+    if (novoFuncionario.cargo === "Gestora") {
+      const respostaConvite = await fetch("/api/invites", {
+        method: "POST",
+        headers: obterCabecalhosAutenticados(usuarioLogado, {
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          funcionarioId: novoFuncionario.id,
+          permissoes: funcionario.permissoes,
+          apartamentosAcesso: funcionario.apartamentosAcesso,
+          apartamentosPermitidos: funcionario.apartamentosPermitidos,
+          prestadoresAcesso: funcionario.prestadoresAcesso,
+          prestadoresPermitidos: funcionario.prestadoresPermitidos,
+        }),
+      });
+      const dadosConvite = await respostaConvite.json();
+
+      if (!respostaConvite.ok) {
+        throw new Error(dadosConvite.erro || "Nao foi possivel gerar o convite.");
+      }
+
+      novoFuncionario.conviteAcesso = dadosConvite.link;
+    }
+
     setFuncionarios(funcionariosAtualizados);
     setTarefas(tarefasAtualizadas);
 
