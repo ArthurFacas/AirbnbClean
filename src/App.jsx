@@ -21,6 +21,20 @@ function normalizarTelefoneWhatsapp(telefone) {
   return somenteNumeros;
 }
 
+function normalizarEmailComparacao(valor) {
+  return String(valor || "").trim().toLowerCase();
+}
+
+function normalizarTelefoneComparacao(valor) {
+  const numeros = String(valor || "").replace(/\D/g, "");
+
+  if (numeros.length > 11 && numeros.startsWith("55")) {
+    return numeros.slice(2);
+  }
+
+  return numeros;
+}
+
 function normalizarTextoComparacao(valor) {
   return String(valor || "")
     .trim()
@@ -389,6 +403,25 @@ function App() {
   }
 
   async function cadastrarFuncionario(funcionario) {
+    const emailNovo = normalizarEmailComparacao(funcionario.email);
+    const telefoneNovo = normalizarTelefoneComparacao(funcionario.telefone);
+    const emailJaCadastrado = funcionarios.some(
+      (funcionarioAtual) =>
+        normalizarEmailComparacao(funcionarioAtual.email) === emailNovo,
+    );
+    const telefoneJaCadastrado = funcionarios.some(
+      (funcionarioAtual) =>
+        normalizarTelefoneComparacao(funcionarioAtual.telefone) === telefoneNovo,
+    );
+
+    if (emailJaCadastrado) {
+      throw new Error("Este email ja esta cadastrado.");
+    }
+
+    if (telefoneJaCadastrado) {
+      throw new Error("Este WhatsApp ja esta cadastrado.");
+    }
+
     const novoFuncionario = {
       ...funcionario,
       id: Date.now(),
@@ -406,30 +439,6 @@ function App() {
       apartamentos,
       tarefas: tarefasAtualizadas,
     });
-
-    if (novoFuncionario.cargo === "Gestora") {
-      const respostaConvite = await fetch("/api/invites", {
-        method: "POST",
-        headers: obterCabecalhosAutenticados(usuarioLogado, {
-          "Content-Type": "application/json",
-        }),
-        body: JSON.stringify({
-          funcionarioId: novoFuncionario.id,
-          permissoes: funcionario.permissoes,
-          apartamentosAcesso: funcionario.apartamentosAcesso,
-          apartamentosPermitidos: funcionario.apartamentosPermitidos,
-          prestadoresAcesso: funcionario.prestadoresAcesso,
-          prestadoresPermitidos: funcionario.prestadoresPermitidos,
-        }),
-      });
-      const dadosConvite = await respostaConvite.json();
-
-      if (!respostaConvite.ok) {
-        throw new Error(dadosConvite.erro || "Nao foi possivel gerar o convite.");
-      }
-
-      novoFuncionario.conviteAcesso = dadosConvite.link;
-    }
 
     setFuncionarios(funcionariosAtualizados);
     setTarefas(tarefasAtualizadas);

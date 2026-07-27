@@ -33,20 +33,6 @@ function cargoEhGestora(valor) {
   return ["gestora", "gestao", "gerente"].includes(normalizarCargo(valor));
 }
 
-function montarLinkWhatsapp(telefone, linkConvite) {
-  const telefoneLimpo = String(telefone || "").replace(/\D/g, "");
-  const mensagem = [
-    "Ola.",
-    "Voce recebeu um convite para criar seu acesso da CleanHost.",
-    "Abra o link e crie seu login e senha:",
-    linkConvite,
-  ].join("\n");
-
-  return telefoneLimpo
-    ? `https://wa.me/${telefoneLimpo}?text=${encodeURIComponent(mensagem)}`
-    : "";
-}
-
 function formatarCpf(valor) {
   const numeros = String(valor || "").replace(/\D/g, "").slice(0, 11);
 
@@ -68,8 +54,6 @@ function Cadastrarfuncionario({
   );
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
-  const [conviteAcesso, setConviteAcesso] = useState("");
-  const [telefoneConvite, setTelefoneConvite] = useState("");
   const navigate = useNavigate();
   const cadastrandoGestora = cargoEhGestora(formulario.cargo);
 
@@ -90,8 +74,6 @@ function Cadastrarfuncionario({
     }
 
     setErro("");
-    setConviteAcesso("");
-    setTelefoneConvite("");
 
     if (cadastrandoGestora) {
       if (!usuarioEhMaster(usuario)) {
@@ -119,19 +101,13 @@ function Cadastrarfuncionario({
     setSalvando(true);
 
     try {
-      const resultado = await onCadastrar({
+      await onCadastrar({
         ...formulario,
         ...(cadastrandoGestora ? configuracaoPermissoes : {}),
       });
       setFormulario(estadoInicial);
       setConfiguracaoPermissoes(criarConfiguracaoPermissoesPadrao());
-
-      if (cadastrandoGestora && resultado?.conviteAcesso) {
-        setConviteAcesso(resultado.conviteAcesso);
-        setTelefoneConvite(formulario.telefone);
-      } else {
-        navigate("/dashboard/lista-funcionarios");
-      }
+      navigate("/dashboard/lista-funcionarios");
     } catch (erroAtual) {
       setErro(
         erroAtual.message || "Nao foi possivel salvar o prestador. Tente novamente.",
@@ -242,22 +218,6 @@ function Cadastrarfuncionario({
         )}
 
         {erro && <p className="form-error">{erro}</p>}
-        {conviteAcesso && (
-          <div className="form-success">
-            <strong>Link de convite gerado</strong>
-            <input readOnly value={conviteAcesso} />
-            {montarLinkWhatsapp(telefoneConvite, conviteAcesso) && (
-              <a
-                className="whatsapp-action"
-                href={montarLinkWhatsapp(telefoneConvite, conviteAcesso)}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Enviar no WhatsApp
-              </a>
-            )}
-          </div>
-        )}
 
         <button className="primary-action" type="submit" disabled={salvando}>
           {salvando

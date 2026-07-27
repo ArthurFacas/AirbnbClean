@@ -385,6 +385,7 @@ async function salvarEstado(estado, ownerId) {
       apartamentos: normalizarArray(estado.apartamentos),
       tarefas: normalizarArray(estado.tarefas),
     });
+    validarFuncionariosUnicos(estadoNormalizado.funcionarios);
 
     estadoNormalizado.funcionarios.forEach((funcionario) => {
       inserirFuncionario.run(
@@ -467,6 +468,55 @@ async function salvarEstado(estado, ownerId) {
 
 function normalizarArray(valor) {
   return Array.isArray(valor) ? valor : [];
+}
+
+function normalizarEmailComparacao(valor) {
+  return String(valor || "").trim().toLowerCase();
+}
+
+function normalizarTelefoneComparacao(valor) {
+  const numeros = String(valor || "").replace(/\D/g, "");
+
+  if (numeros.length > 11 && numeros.startsWith("55")) {
+    return numeros.slice(2);
+  }
+
+  return numeros;
+}
+
+function validarFuncionariosUnicos(funcionarios) {
+  const emails = new Map();
+  const telefones = new Map();
+
+  normalizarArray(funcionarios).forEach((funcionario) => {
+    const id = String(funcionario.id || "");
+    const email = normalizarEmailComparacao(funcionario.email);
+    const telefone = normalizarTelefoneComparacao(funcionario.telefone);
+
+    if (email) {
+      const idExistente = emails.get(email);
+
+      if (idExistente && idExistente !== id) {
+        const erro = new Error("Este email ja esta cadastrado.");
+        erro.status = 409;
+        throw erro;
+      }
+
+      emails.set(email, id);
+    }
+
+    if (telefone) {
+      const idExistente = telefones.get(telefone);
+
+      if (idExistente && idExistente !== id) {
+        const erro = new Error("Este WhatsApp ja esta cadastrado.");
+        erro.status = 409;
+        throw erro;
+      }
+
+      telefones.set(telefone, id);
+    }
+  });
 }
 
 function normalizarCargo(valor) {
