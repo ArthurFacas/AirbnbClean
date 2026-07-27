@@ -151,6 +151,25 @@ async function garantirBanco() {
         funcionario_id TEXT NOT NULL,
         criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS convites_acesso (
+        codigo_hash TEXT PRIMARY KEY,
+        owner_id INTEGER NOT NULL,
+        funcionario_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        nome TEXT,
+        cargo TEXT NOT NULL,
+        permissoes_json TEXT,
+        apartamentos_acesso TEXT,
+        apartamentos_permitidos_json TEXT,
+        prestadores_acesso TEXT,
+        prestadores_permitidos_json TEXT,
+        criado_em TEXT NOT NULL,
+        expira_em TEXT NOT NULL,
+        utilizado_em TEXT,
+        usuario_id TEXT,
+        cancelado_em TEXT
+      );
     `);
 
     garantirColuna("funcionarios", "owner_id", "INTEGER");
@@ -1130,6 +1149,108 @@ function normalizarConfiguracaoPermissoes(dados, permissoesPadrao = false) {
   };
 }
 
+function criarCodigoConvite() {
+  return randomBytes(32).toString("base64url");
+}
+
+function criarHashConvite(codigo) {
+  return createHash("sha256").update(String(codigo || "")).digest("hex");
+}
+
+function cargoEhGestora(valor) {
+  return normalizarCargo(valor) === "Gestora";
+}
+
+function cargoEhPrestador(valor) {
+  return !cargoEhGestora(valor);
+}
+
+function obterCargoConvite(funcionario) {
+  return cargoEhGestora(funcionario?.cargo) ? "Gestora" : "Prestador";
+}
+
+function erroConvite(mensagem, status = 403) {
+  const erro = new Error(mensagem);
+  erro.status = status;
+  throw erro;
+}
+
+function mapearConvitePublico(convite, link = "") {
+  if (!convite) {
+    return {
+      status: "Acesso nao enviado",
+      acao: "Enviar link",
+      link: "",
+    };
+  }
+
+  if (convite.cancelado_em) {
+    return {
+      status: "Acesso nao enviado",
+      acao: "Enviar link",
+      link: "",
+    };
+  }
+
+  if (convite.utilizado_em || convite.usuario_id) {
+    return {
+      status: "Conta criada",
+      acao: "Ver acesso",
+      link: "",
+    };
+  }
+
+  if (new Date(convite.expira_em).getTime() < Date.now()) {
+    return {
+      status: "Convite expirado",
+      acao: "Reenviar convite",
+      link: "",
+    };
+  }
+
+  return {
+    status: "Convite enviado",
+    acao: "Copiar link",
+    link,
+  };
+}
+
+function buscarFuncionarioOperacional(ownerId, funcionarioId) {
+  return banco
+    .prepare(
+      `SELECT id, nome, nascimento, email, telefone, cargo, bairro
+       FROM funcionarios
+       WHERE owner_id = ? AND CAST(id AS TEXT) = ?`,
+    )
+    .get(ownerId, String(funcionarioId || ""));
+}
+
+function buscarConviteAtivoPorFuncionario(ownerId, funcionarioId) {
+  return banco
+    .prepare(
+      `SELECT *
+       FROM convites_acesso
+       WHERE owner_id = ?
+         AND funcionario_id = ?
+         AND cancelado_em IS NULL
+       ORDER BY datetime(criado_em) DESC
+       LIMIT 1`,
+    )
+    .get(ownerId, String(funcionarioId || ""));
+}
+
+function buscarConvitePorCodigo(codigo) {
+  return banco
+    .prepare("SELECT * FROM convites_acesso WHERE codigo_hash = ?")
+    .get(criarHashConvite(codigo));
+}
+
+function montarLinkConvite(requisicao, codigo) {
+  const origem = `http://${requisicao.headers.host}`;
+
+  return `${origem}/#/convite/${encodeURIComponent(codigo)}`;
+}
+
 function buscarUsuarioPorEmail(email) {
   return banco
     .prepare(
@@ -1209,6 +1330,286 @@ async function salvarPermissoesGestora(dados, usuarioAtual) {
     );
 
   return obterPermissoesGestora(email, usuarioAtual);
+}
+
+async function criarConviteAcesso(dados, usuarioAtual, requisicao) {
+  await garantirBanco();
+  garantirMaster(usuarioAtual);
+
+  const ownerId = obterOwnerOperacional(usuarioAtual);
+  const funcionarioId = String(dados.funcionarioId || "").trim();
+  const funcionario = buscarFuncionarioOperacional(ownerId, funcionarioId);
+
+  if (!funcionario) {
+    erroConvite("Pessoa cadastrada nao encontrada.", 404);
+  }
+
+  const email = String(funcionario.email || "").trim().toLowerCase();
+
+  if (!validarEmail(email)) {
+    erroConvite("Email cadastrado invalido.", 400);
+  }
+
+  const usuarioExistente = buscarUsuarioPorEmail(email);
+  const acessoPrestadorExistente = banco
+    .prepare("SELECT funcionario_id FROM prestador_acessos WHERE funcionario_id = ?")
+    .get(funcionarioId);
+
+  if (cargoEhGestora(funcionario.cargo) && usuarioExistente) {
+    erroConvite("Esta gestora ja possui conta criada.", 409);
+  }
+
+  if (cargoEhPrestador(funcionario.cargo) && acessoPrestadorExistente) {
+    erroConvite("Este prestador ja possui acesso criado.", 409);
+  }
+
+  const cargo = obterCargoConvite(funcionario);
+  const configuracao = cargo === "Gestora"
+    ? normalizarConfiguracaoPermissoes(dados, true)
+    : normalizarConfiguracaoPermissoes({}, false);
+  const codigo = criarCodigoConvite();
+  const agora = new Date();
+  const expiraEm = new Date(agora.getTime() + 1000 * 60 * 60 * 24 * 7);
+
+  banco
+    .prepare(
+      `UPDATE convites_acesso
+       SET cancelado_em = ?
+       WHERE owner_id = ?
+         AND funcionario_id = ?
+         AND utilizado_em IS NULL
+         AND cancelado_em IS NULL`,
+    )
+    .run(agora.toISOString(), ownerId, funcionarioId);
+  banco
+    .prepare(
+      `INSERT INTO convites_acesso (
+        codigo_hash, owner_id, funcionario_id, email, nome, cargo,
+        permissoes_json, apartamentos_acesso, apartamentos_permitidos_json,
+        prestadores_acesso, prestadores_permitidos_json, criado_em, expira_em
+      )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      criarHashConvite(codigo),
+      ownerId,
+      funcionarioId,
+      email,
+      funcionario.nome || "",
+      cargo,
+      cargo === "Gestora" ? JSON.stringify(configuracao.permissoes) : "",
+      cargo === "Gestora" ? configuracao.apartamentosAcesso : "",
+      cargo === "Gestora" ? JSON.stringify(configuracao.apartamentosPermitidos) : "[]",
+      cargo === "Gestora" ? configuracao.prestadoresAcesso : "",
+      cargo === "Gestora" ? JSON.stringify(configuracao.prestadoresPermitidos) : "[]",
+      agora.toISOString(),
+      expiraEm.toISOString(),
+    );
+
+  const link = montarLinkConvite(requisicao, codigo);
+
+  return {
+    ...mapearConvitePublico({ cargo, expira_em: expiraEm.toISOString() }, link),
+    cargo,
+    email,
+    link,
+    expiraEm: expiraEm.toISOString(),
+  };
+}
+
+async function obterStatusConviteAcesso(funcionarioId, usuarioAtual) {
+  await garantirBanco();
+  garantirMaster(usuarioAtual);
+
+  const ownerId = obterOwnerOperacional(usuarioAtual);
+  const funcionario = buscarFuncionarioOperacional(ownerId, funcionarioId);
+
+  if (!funcionario) {
+    erroConvite("Pessoa cadastrada nao encontrada.", 404);
+  }
+
+  const convite = buscarConviteAtivoPorFuncionario(ownerId, funcionarioId);
+  const email = String(funcionario.email || "").trim().toLowerCase();
+  const contaCriada = cargoEhGestora(funcionario.cargo)
+    ? buscarUsuarioPorEmail(email)
+    : banco
+        .prepare("SELECT funcionario_id FROM prestador_acessos WHERE funcionario_id = ?")
+        .get(String(funcionarioId));
+
+  if (contaCriada && !convite) {
+    return {
+      status: "Conta criada",
+      acao: "Ver acesso",
+      link: "",
+      cargo: obterCargoConvite(funcionario),
+    };
+  }
+
+  return {
+    ...mapearConvitePublico(convite),
+    cargo: obterCargoConvite(funcionario),
+  };
+}
+
+async function cancelarConviteAcesso(funcionarioId, usuarioAtual) {
+  await garantirBanco();
+  garantirMaster(usuarioAtual);
+
+  const ownerId = obterOwnerOperacional(usuarioAtual);
+  const agora = new Date().toISOString();
+
+  banco
+    .prepare(
+      `UPDATE convites_acesso
+       SET cancelado_em = ?
+       WHERE owner_id = ?
+         AND funcionario_id = ?
+         AND utilizado_em IS NULL
+         AND cancelado_em IS NULL`,
+    )
+    .run(agora, ownerId, String(funcionarioId || ""));
+
+  return { ok: true, status: "Acesso nao enviado", acao: "Enviar link" };
+}
+
+async function obterConviteAcesso(codigo) {
+  await garantirBanco();
+  const convite = buscarConvitePorCodigo(codigo);
+
+  if (!convite) {
+    erroConvite("Convite invalido.");
+  }
+
+  const funcionario = buscarFuncionarioOperacional(
+    convite.owner_id,
+    convite.funcionario_id,
+  );
+
+  if (!funcionario) {
+    erroConvite("Cadastro vinculado ao convite nao encontrado.", 404);
+  }
+
+  if (convite.cancelado_em) {
+    erroConvite("Convite cancelado.");
+  }
+
+  if (convite.utilizado_em || convite.usuario_id) {
+    erroConvite("Este convite ja foi utilizado.");
+  }
+
+  if (new Date(convite.expira_em).getTime() < Date.now()) {
+    erroConvite("Convite expirado.");
+  }
+
+  return {
+    nome: funcionario.nome || convite.nome || "",
+    email: convite.email,
+    cargo: convite.cargo,
+    expiraEm: convite.expira_em,
+  };
+}
+
+async function cadastrarAcessoPorConvite(dados) {
+  await garantirBanco();
+  const convite = buscarConvitePorCodigo(dados.codigo || dados.token);
+
+  if (!convite) {
+    erroConvite("Convite invalido.");
+  }
+
+  const dadosConvite = await obterConviteAcesso(dados.codigo || dados.token);
+  const funcionario = buscarFuncionarioOperacional(
+    convite.owner_id,
+    convite.funcionario_id,
+  );
+  const email = String(convite.email || "").trim().toLowerCase();
+  const confirmarEmail = String(dados.confirmarEmail || email)
+    .trim()
+    .toLowerCase();
+  const senha = String(dados.senha || "");
+  const confirmarSenha = String(dados.confirmarSenha || senha);
+
+  if (!funcionario || !validarEmail(email)) {
+    erroConvite("Dados do convite invalidos.", 400);
+  }
+
+  if (email !== confirmarEmail) {
+    erroConvite("Os emails precisam ser iguais.", 400);
+  }
+
+  if (senha.length < 6 || senha !== confirmarSenha) {
+    erroConvite("Senha invalida.", 400);
+  }
+
+  const agora = new Date().toISOString();
+  const { hash, salt } = criarHashSenha(senha);
+
+  if (dadosConvite.cargo === "Gestora") {
+    if (buscarUsuarioPorEmail(email)) {
+      erroConvite("Esta gestora ja possui conta criada.", 409);
+    }
+
+    const resultado = banco
+      .prepare(
+        `INSERT INTO usuarios (
+          email, nome, telefone, cpf, senha_hash, senha_salt, papel, owner_id,
+          ativo, permissoes_json, apartamentos_acesso,
+          apartamentos_permitidos_json, prestadores_acesso,
+          prestadores_permitidos_json
+        )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        email,
+        funcionario.nome || convite.nome || "",
+        limparNumeros(funcionario.telefone),
+        limparNumeros(dados.cpf || "00000000000"),
+        hash,
+        salt,
+        "Gestora",
+        convite.owner_id,
+        1,
+        convite.permissoes_json || JSON.stringify(PERMISSOES_GESTORA_PADRAO),
+        normalizarTipoAcesso(convite.apartamentos_acesso),
+        convite.apartamentos_permitidos_json || "[]",
+        normalizarTipoAcesso(convite.prestadores_acesso),
+        convite.prestadores_permitidos_json || "[]",
+      );
+
+    banco
+      .prepare(
+        `UPDATE convites_acesso
+         SET utilizado_em = ?, usuario_id = ?
+         WHERE codigo_hash = ?`,
+      )
+      .run(agora, String(resultado.lastInsertRowid), convite.codigo_hash);
+
+    return { tipo: "Gestora", email };
+  }
+
+  const acessoExistente = banco
+    .prepare("SELECT funcionario_id FROM prestador_acessos WHERE funcionario_id = ?")
+    .get(String(convite.funcionario_id));
+
+  if (acessoExistente) {
+    erroConvite("Este prestador ja possui acesso criado.", 409);
+  }
+
+  banco
+    .prepare(
+      `INSERT INTO prestador_acessos (funcionario_id, email, senha_hash, senha_salt)
+       VALUES (?, ?, ?, ?)`,
+    )
+    .run(String(convite.funcionario_id), email, hash, salt);
+  banco
+    .prepare(
+      `UPDATE convites_acesso
+       SET utilizado_em = ?, usuario_id = ?
+       WHERE codigo_hash = ?`,
+    )
+    .run(agora, String(convite.funcionario_id), convite.codigo_hash);
+
+  return { tipo: "Prestador", email, funcionarioId: String(convite.funcionario_id) };
 }
 
 function garantirAlteracoesColecaoPermitidas({
@@ -1770,28 +2171,28 @@ async function criarAcessoPrestador(dados) {
 async function autenticarPrestador(dados) {
   await garantirBanco();
 
-  const funcionarioId = String(dados.funcionarioId || "");
   const email = String(dados.email || "")
     .trim()
     .toLowerCase();
   const senha = String(dados.senha || "");
-  const prestador = await buscarPrestador(funcionarioId);
 
-  if (!prestador || !validarEmail(email) || !senha) {
+  if (!validarEmail(email) || !senha) {
     const erro = new Error("Email ou senha invalidos.");
     erro.status = 400;
     throw erro;
   }
 
-  garantirFuncionarioEhPrestador(prestador);
-
   const acesso = banco
     .prepare(
-      `SELECT funcionario_id, email, senha_hash, senha_salt
-       FROM prestador_acessos
-       WHERE funcionario_id = ?`,
+      `SELECT a.funcionario_id, a.email, a.senha_hash, a.senha_salt,
+              f.id, f.nome, f.nascimento, f.telefone, f.cargo, f.bairro
+       FROM prestador_acessos a
+       JOIN funcionarios f ON CAST(f.id AS TEXT) = a.funcionario_id
+       WHERE lower(a.email) = ?
+       ORDER BY f.id
+       LIMIT 1`,
     )
-    .get(String(prestador.id));
+    .get(email);
 
   if (
     !acesso ||
@@ -1805,6 +2206,18 @@ async function autenticarPrestador(dados) {
     erro.status = 401;
     throw erro;
   }
+
+  const prestador = {
+    id: acesso.id,
+    nome: acesso.nome,
+    nascimento: acesso.nascimento,
+    email: acesso.email,
+    telefone: acesso.telefone,
+    cargo: acesso.cargo,
+    bairro: acesso.bairro,
+  };
+
+  garantirFuncionarioEhPrestador(prestador);
 
   return prestadorPublico(prestador);
 }
@@ -2209,6 +2622,143 @@ const servidor = createServer(async (requisicao, resposta) => {
     } catch (erro) {
       enviarJson(resposta, erro.status || 500, {
         erro: erro.message || "Nao foi possivel salvar as permissoes.",
+      });
+    }
+    return;
+  }
+
+  if (requisicao.url?.startsWith("/api/invites")) {
+    try {
+      const usuarioAtual = autenticarRequisicaoUsuario(requisicao);
+      const url = new URL(requisicao.url, `http://${requisicao.headers.host}`);
+
+      if (requisicao.method === "GET") {
+        enviarJson(
+          resposta,
+          200,
+          await obterStatusConviteAcesso(
+            url.searchParams.get("funcionarioId"),
+            usuarioAtual,
+          ),
+        );
+        return;
+      }
+
+      if (requisicao.method === "POST") {
+        enviarJson(
+          resposta,
+          201,
+          await criarConviteAcesso(
+            JSON.parse(await lerCorpo(requisicao)),
+            usuarioAtual,
+            requisicao,
+          ),
+        );
+        return;
+      }
+
+      if (requisicao.method === "DELETE") {
+        enviarJson(
+          resposta,
+          200,
+          await cancelarConviteAcesso(
+            url.searchParams.get("funcionarioId"),
+            usuarioAtual,
+          ),
+        );
+        return;
+      }
+
+      enviarJson(resposta, 405, { erro: "Metodo nao permitido." });
+    } catch (erro) {
+      enviarJson(resposta, erro.status || 500, {
+        erro: erro.message || "Nao foi possivel acessar o convite.",
+      });
+    }
+    return;
+  }
+
+  if (requisicao.url?.startsWith("/api/invite")) {
+    try {
+      const url = new URL(requisicao.url, `http://${requisicao.headers.host}`);
+
+      if (requisicao.method === "GET") {
+        enviarJson(
+          resposta,
+          200,
+          await obterConviteAcesso(url.searchParams.get("codigo")),
+        );
+        return;
+      }
+
+      if (requisicao.method === "POST") {
+        enviarJson(
+          resposta,
+          201,
+          await cadastrarAcessoPorConvite(JSON.parse(await lerCorpo(requisicao))),
+        );
+        return;
+      }
+
+      enviarJson(resposta, 405, { erro: "Metodo nao permitido." });
+    } catch (erro) {
+      enviarJson(resposta, erro.status || 500, {
+        erro: erro.message || "Nao foi possivel usar o convite.",
+      });
+    }
+    return;
+  }
+
+  if (requisicao.url?.startsWith("/api/auth/manager-invite")) {
+    try {
+      const url = new URL(requisicao.url, `http://${requisicao.headers.host}`);
+
+      if (requisicao.method === "GET") {
+        enviarJson(
+          resposta,
+          200,
+          await obterConviteAcesso(url.searchParams.get("token")),
+        );
+        return;
+      }
+
+      if (requisicao.method === "POST") {
+        enviarJson(
+          resposta,
+          201,
+          await criarConviteAcesso(
+            JSON.parse(await lerCorpo(requisicao)),
+            autenticarRequisicaoUsuario(requisicao),
+            requisicao,
+          ),
+        );
+        return;
+      }
+
+      enviarJson(resposta, 405, { erro: "Metodo nao permitido." });
+    } catch (erro) {
+      enviarJson(resposta, erro.status || 500, {
+        erro: erro.message || "Nao foi possivel gerar o convite.",
+      });
+    }
+    return;
+  }
+
+  if (requisicao.url?.startsWith("/api/auth/manager-register")) {
+    try {
+      if (requisicao.method !== "POST") {
+        enviarJson(resposta, 405, { erro: "Metodo nao permitido." });
+        return;
+      }
+
+      enviarJson(
+        resposta,
+        201,
+        await cadastrarAcessoPorConvite(JSON.parse(await lerCorpo(requisicao))),
+      );
+    } catch (erro) {
+      enviarJson(resposta, erro.status || 500, {
+        erro: erro.message || "Nao foi possivel criar a gestora.",
       });
     }
     return;

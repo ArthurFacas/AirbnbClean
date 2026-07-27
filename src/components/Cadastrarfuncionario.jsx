@@ -76,25 +76,8 @@ function Cadastrarfuncionario({
     setErro("");
 
     if (cadastrandoGestora) {
-      const cpfNumeros = formulario.cpf.replace(/\D/g, "");
-
       if (!usuarioEhMaster(usuario)) {
         setErro("Apenas o Master pode cadastrar uma gestora.");
-        return;
-      }
-
-      if (cpfNumeros.length !== 11) {
-        setErro("CPF precisa ter 11 numeros.");
-        return;
-      }
-
-      if (formulario.senha.length < 6) {
-        setErro("A senha precisa ter pelo menos 6 caracteres.");
-        return;
-      }
-
-      if (formulario.senha !== formulario.confirmarSenha) {
-        setErro("As senhas precisam ser iguais.");
         return;
       }
 
@@ -219,39 +202,9 @@ function Cadastrarfuncionario({
 
         {cadastrandoGestora && (
           <>
-            <label htmlFor="cpf">CPF da gestora</label>
-            <input
-              type="text"
-              id="cpf"
-              name="cpf"
-              value={formulario.cpf}
-              onChange={atualizarCampo}
-              placeholder="000.000.000-00"
-              maxLength={14}
-              required
-            />
-
-            <label htmlFor="senha">Senha da gestora</label>
-            <input
-              type="password"
-              id="senha"
-              name="senha"
-              value={formulario.senha}
-              onChange={atualizarCampo}
-              minLength={6}
-              required
-            />
-
-            <label htmlFor="confirmarSenha">Confirmar senha</label>
-            <input
-              type="password"
-              id="confirmarSenha"
-              name="confirmarSenha"
-              value={formulario.confirmarSenha}
-              onChange={atualizarCampo}
-              minLength={6}
-              required
-            />
+            <p className="form-hint">
+              A gestora criara a propria senha pelo botao Enviar link na lista.
+            </p>
 
             <PermissoesAdministrativas
               apartamentos={apartamentos}
@@ -265,7 +218,9 @@ function Cadastrarfuncionario({
         {erro && <p className="form-error">{erro}</p>}
 
         <button className="primary-action" type="submit" disabled={salvando}>
-          {salvando ? "Salvando..." : "Cadastrar"}
+          {salvando
+            ? "Salvando..."
+            : "Cadastrar"}
         </button>
       </form>
     </div>

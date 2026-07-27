@@ -32,6 +32,11 @@ function normalizarPapelUsuario(valor) {
     : "Master";
 }
 
+function usuarioPode(usuario, permissao) {
+  return normalizarPapelUsuario(usuario?.papel) === "Master" ||
+    Boolean(usuario?.permissoes?.[permissao]);
+}
+
 function DashboardHome({
   apartamentoTotal,
   funcionarioTotal,
@@ -158,19 +163,28 @@ function Dashboard({
   const isDashboardHome = location.pathname === "/dashboard";
   const usuarioMaster = normalizarPapelUsuario(usuario?.papel) === "Master";
   const navItems = [
-    { path: "/dashboard", label: "Dashboard", icon: "DB" },
+    { path: "/dashboard", label: "Dashboard", icon: "DB", permitido: true },
     {
       path: "/dashboard/lista-funcionarios",
       label: "Prestadores de servico",
       icon: "PS",
+      permitido: usuarioPode(usuario, "visualizarPrestadores"),
     },
     {
       path: "/dashboard/lista-apartamentos",
       label: "Apartamentos",
       icon: "AP",
+      permitido: usuarioPode(usuario, "visualizarApartamentos"),
     },
-    { path: "/dashboard/tarefas", label: "Tarefas", icon: "TF" },
-  ];
+    {
+      path: "/dashboard/tarefas",
+      label: "Tarefas",
+      icon: "TF",
+      permitido:
+        usuarioPode(usuario, "visualizarTarefas") ||
+        usuarioPode(usuario, "visualizarCalendarios"),
+    },
+  ].filter((item) => item.permitido);
 
   function rotaAtiva(path) {
     return path === "/dashboard"

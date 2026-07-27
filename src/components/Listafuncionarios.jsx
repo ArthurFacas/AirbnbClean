@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PermissoesAdministrativas from "./PermissoesAdministrativas";
 import {
@@ -62,18 +62,13 @@ function obterValor(valor, fallback = "Nao informado") {
     : fallback;
 }
 
-function montarLinkPrestador(funcionarioId) {
-  return `${window.location.origin}${window.location.pathname}#/prestador/${funcionarioId}`;
-}
-
-function montarLinkWhatsapp(funcionario) {
+function montarLinkWhatsapp(funcionario, linkConvite) {
   const telefone = String(funcionario.telefone || "").replace(/\D/g, "");
-  const linkPrestador = montarLinkPrestador(funcionario.id);
   const mensagem = [
     `Ola, ${funcionario.nome}.`,
-    "Voce recebeu um convite para acessar suas tarefas da CleanHost.",
-    "Abra o link, crie seu login e senha de prestador de servico e veja somente as tarefas designadas para voce:",
-    linkPrestador,
+    "Voce recebeu um convite para criar seu acesso da CleanHost.",
+    "Abra o link e crie seu login e senha:",
+    linkConvite,
   ].join("\n");
 
   return telefone
@@ -131,6 +126,31 @@ function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario
   );
   const [salvandoPermissoes, setSalvandoPermissoes] = useState(false);
   const [erroPermissoes, setErroPermissoes] = useState("");
+  const [convites, setConvites] = useState({});
+  const [carregandoConvite, setCarregandoConvite] = useState("");
+
+  useEffect(() => {
+    if (!podeAlterarGestora || !usuario?.token) {
+      return;
+    }
+
+    funcionarios.forEach((funcionario) => {
+      fetch(
+        `/api/invites?funcionarioId=${encodeURIComponent(funcionario.id)}`,
+        {
+          headers: obterCabecalhosAutenticados(usuario),
+        },
+      )
+        .then((resposta) => resposta.json())
+        .then((dados) => {
+          setConvites((convitesAtuais) => ({
+            ...convitesAtuais,
+            [funcionario.id]: dados,
+          }));
+        })
+        .catch(() => {});
+    });
+  }, [funcionarios, podeAlterarGestora, usuario]);
 
   async function abrirPermissoes(funcionario) {
     setErroPermissoes("");
@@ -201,6 +221,93 @@ function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario
     } finally {
       setSalvandoPermissoes(false);
     }
+  }
+
+  async function gerarConvite(funcionario) {
+    setCarregandoConvite(String(funcionario.id));
+    setErroPermissoes("");
+
+    try {
+      const resposta = await fetch("/api/invites", {
+        method: "POST",
+        headers: obterCabecalhosAutenticados(usuario, {
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          funcionarioId: funcionario.id,
+          ...(funcionarioEhGestora(funcionario)
+            ? criarConfiguracaoPermissoesPadrao()
+            : {}),
+        }),
+      });
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(dados.erro || "Nao foi possivel gerar o convite.");
+      }
+
+      setConvites((convitesAtuais) => ({
+        ...convitesAtuais,
+        [funcionario.id]: dados,
+      }));
+
+      if (dados.link && funcionario.telefone) {
+        window.open(montarLinkWhatsapp(funcionario, dados.link), "_blank", "noopener,noreferrer");
+      }
+    } catch (erro) {
+      setErroPermissoes(erro.message || "Nao foi possivel gerar o convite.");
+    } finally {
+      setCarregandoConvite("");
+    }
+  }
+
+  async function copiarConvite(funcionario) {
+    const convite = convites[funcionario.id];
+
+    if (!convite?.link) {
+      await gerarConvite(funcionario);
+      return;
+    }
+
+    await navigator.clipboard?.writeText(convite.link);
+  }
+
+  async function cancelarConvite(funcionario) {
+    setCarregandoConvite(String(funcionario.id));
+    setErroPermissoes("");
+
+    try {
+      const resposta = await fetch(
+        `/api/invites?funcionarioId=${encodeURIComponent(funcionario.id)}`,
+        {
+          method: "DELETE",
+          headers: obterCabecalhosAutenticados(usuario),
+        },
+      );
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(dados.erro || "Nao foi possivel cancelar o convite.");
+      }
+
+      setConvites((convitesAtuais) => ({
+        ...convitesAtuais,
+        [funcionario.id]: dados,
+      }));
+    } catch (erro) {
+      setErroPermissoes(erro.message || "Nao foi possivel cancelar o convite.");
+    } finally {
+      setCarregandoConvite("");
+    }
+  }
+
+  function abrirAcesso(funcionario) {
+    if (funcionarioEhGestora(funcionario)) {
+      navigate("/dashboard");
+      return;
+    }
+
+    navigate(`/prestador-preview/${funcionario.id}`);
   }
 
   return (
@@ -286,30 +393,55 @@ function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario
                   <span>Cargo</span>
                   <strong>{obterValor(funcionario.cargo)}</strong>
                 </div>
+                <div>
+                  <span>Acesso</span>
+                  <strong>
+                    {convites[funcionario.id]?.status || "Acesso nao enviado"}
+                  </strong>
+                </div>
               </div>
 
               <div className="provider-actions">
                 <button
                   className="secondary-action"
                   type="button"
-                  onClick={() =>
-                    navigate(`/prestador-preview/${funcionario.id}`)
-                  }
+                  onClick={() => abrirAcesso(funcionario)}
                 >
                   Ver acesso
                 </button>
-                {montarLinkWhatsapp(funcionario) ? (
-                  <a
+                {podeAlterarGestora && (
+                  <button
                     className="whatsapp-action"
-                    href={montarLinkWhatsapp(funcionario)}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    type="button"
+                    disabled={carregandoConvite === String(funcionario.id)}
+                    onClick={() => {
+                      const convite = convites[funcionario.id];
+
+                      if (convite?.status === "Conta criada") {
+                        abrirAcesso(funcionario);
+                        return;
+                      }
+
+                      if (convite?.status === "Convite enviado") {
+                        copiarConvite(funcionario).catch(() => {});
+                        return;
+                      }
+
+                      gerarConvite(funcionario);
+                    }}
                   >
-                    Enviar link
-                  </a>
-                ) : (
-                  <button className="secondary-action" type="button" disabled>
-                    Sem WhatsApp
+                    {carregandoConvite === String(funcionario.id)
+                      ? "Gerando..."
+                      : convites[funcionario.id]?.acao || "Enviar link"}
+                  </button>
+                )}
+                {convites[funcionario.id]?.status === "Convite enviado" && (
+                  <button
+                    className="secondary-action"
+                    type="button"
+                    onClick={() => cancelarConvite(funcionario)}
+                  >
+                    Cancelar convite
                   </button>
                 )}
                 {podeAlterarGestora && funcionarioEhGestora(funcionario) && (

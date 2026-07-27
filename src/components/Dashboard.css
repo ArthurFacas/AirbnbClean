@@ -3263,6 +3263,31 @@ button:disabled,
   font-weight: 700;
 }
 
+.form-hint {
+  margin: 0;
+  color: var(--dash-muted, #64748b);
+  font-size: 14px;
+}
+
+.form-success {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.form-success input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #86efac;
+  border-radius: 8px;
+  padding: 10px;
+  color: #14532d;
+}
+
 .reservation-list {
   display: flex;
   flex-wrap: wrap;

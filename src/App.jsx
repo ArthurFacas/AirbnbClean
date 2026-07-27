@@ -44,6 +44,14 @@ function normalizarCargoFuncionario(valor) {
   return String(valor || "").trim();
 }
 
+function usuarioEhMaster(usuario) {
+  return String(usuario?.papel || "Master") === "Master";
+}
+
+function usuarioPode(usuario, permissao) {
+  return usuarioEhMaster(usuario) || Boolean(usuario?.permissoes?.[permissao]);
+}
+
 function obterBairrosAtendidos(funcionario) {
   return String(funcionario?.bairro || "")
     .split(/[,;|]/)
@@ -392,34 +400,6 @@ function App() {
       tarefas,
       funcionariosAtualizados,
     );
-
-    if (novoFuncionario.cargo === "Gestora") {
-      const respostaGestora = await fetch("/api/auth/manager", {
-        method: "POST",
-        headers: obterCabecalhosAutenticados(usuarioLogado, {
-          "Content-Type": "application/json",
-        }),
-        body: JSON.stringify({
-          nome: novoFuncionario.nome,
-          email: novoFuncionario.email,
-          confirmarEmail: novoFuncionario.email,
-          telefone: novoFuncionario.telefone,
-          cpf: funcionario.cpf,
-          senha: funcionario.senha,
-          confirmarSenha: funcionario.confirmarSenha,
-          permissoes: funcionario.permissoes,
-          apartamentosAcesso: funcionario.apartamentosAcesso,
-          apartamentosPermitidos: funcionario.apartamentosPermitidos,
-          prestadoresAcesso: funcionario.prestadoresAcesso,
-          prestadoresPermitidos: funcionario.prestadoresPermitidos,
-        }),
-      });
-      const dadosGestora = await respostaGestora.json();
-
-      if (!respostaGestora.ok) {
-        throw new Error(dadosGestora.erro || "Nao foi possivel criar a gestora.");
-      }
-    }
 
     await salvarEstadoAtualizado({
       funcionarios: funcionariosAtualizados,
@@ -877,6 +857,10 @@ function App() {
     <Routes>
       <Route path="/" element={<Login onEntrar={setUsuarioLogado} />} />
       <Route
+        path="/convite/:codigo"
+        element={<Login onEntrar={setUsuarioLogado} />}
+      />
+      <Route
         path="/prestador/:prestadorId"
         element={
           <PortalPrestador
@@ -933,51 +917,72 @@ function App() {
         <Route
           path="lista-funcionarios"
           element={
-            <Listafuncionarios
-              apartamentos={apartamentos}
-              funcionarios={funcionarios}
-              onExcluir={excluirFuncionario}
-              usuario={usuarioLogado}
-            />
+            usuarioPode(usuarioLogado, "visualizarPrestadores") ? (
+              <Listafuncionarios
+                apartamentos={apartamentos}
+                funcionarios={funcionarios}
+                onExcluir={excluirFuncionario}
+                usuario={usuarioLogado}
+              />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
           }
         />
         <Route
           path="cadastro-funcionario"
           element={
-            <Cadastrarfuncionario
-              apartamentos={apartamentos}
-              funcionarios={funcionarios}
-              onCadastrar={cadastrarFuncionario}
-              usuario={usuarioLogado}
-            />
+            usuarioPode(usuarioLogado, "cadastrarPrestadores") ? (
+              <Cadastrarfuncionario
+                apartamentos={apartamentos}
+                funcionarios={funcionarios}
+                onCadastrar={cadastrarFuncionario}
+                usuario={usuarioLogado}
+              />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
           }
         />
         <Route
           path="cadastro-apartamento"
           element={
-            <CadastroApartamento onCadastrar={cadastrarApartamento} />
+            usuarioPode(usuarioLogado, "cadastrarApartamentos") ? (
+              <CadastroApartamento onCadastrar={cadastrarApartamento} />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
           }
         />
         <Route
           path="lista-apartamentos"
           element={
-            <Listaapartamentos
-              apartamentos={apartamentos}
-              onAtualizar={atualizarApartamento}
-              onExcluir={excluirApartamento}
-            />
+            usuarioPode(usuarioLogado, "visualizarApartamentos") ? (
+              <Listaapartamentos
+                apartamentos={apartamentos}
+                onAtualizar={atualizarApartamento}
+                onExcluir={excluirApartamento}
+              />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
           }
         />
         <Route
           path="tarefas"
           element={
-            <Tarefas
-              funcionarios={funcionarios}
-              onAtribuirFuncionario={atribuirFuncionarioTarefa}
-              onAtualizarDados={atualizarDados}
-              onAtualizarTarefa={atualizarTarefa}
-              tarefas={tarefas}
-            />
+            usuarioPode(usuarioLogado, "visualizarTarefas") ||
+            usuarioPode(usuarioLogado, "visualizarCalendarios") ? (
+              <Tarefas
+                funcionarios={funcionarios}
+                onAtribuirFuncionario={atribuirFuncionarioTarefa}
+                onAtualizarDados={atualizarDados}
+                onAtualizarTarefa={atualizarTarefa}
+                tarefas={tarefas}
+              />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
           }
         />
       </Route>
