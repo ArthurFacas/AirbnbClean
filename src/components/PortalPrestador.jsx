@@ -47,6 +47,21 @@ function formatarMes(dataMes) {
   });
 }
 
+function alterarMesInput(dataMes, deslocamento) {
+  const data = new Date(`${dataMes}-01T00:00:00`);
+
+  if (Number.isNaN(data.getTime())) {
+    return obterMesInput(obterHojeInput());
+  }
+
+  data.setMonth(data.getMonth() + deslocamento);
+
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, "0");
+
+  return `${ano}-${mes}`;
+}
+
 function obterDataCheckout(tarefa) {
   const valor = tarefa.checkout ?? tarefa.dataCheckout ?? tarefa.data;
 
@@ -638,7 +653,7 @@ function PortalPrestador({
           <strong>{obterTituloTarefa(tarefa)}</strong>
           <div>
             {concluida && <span>Concluida</span>}
-            {!concluida && tarefa.prioridade && <span>⚠ Prioridade</span>}
+            {!concluida && tarefa.prioridade && <span>🚨 Prioridade</span>}
             {!concluida && (
               <span className={`provider-urgency-label ${urgenciaVisual.classe}`}>
                 {urgenciaVisual.chave === "vermelha"
@@ -874,15 +889,45 @@ function PortalPrestador({
           <section className="provider-calendar-panel">
             <div className="provider-calendar-header">
               <strong>{formatarMes(mesCalendario)}</strong>
-              <input
-                aria-label="Escolher mes"
-                type="month"
-                value={mesCalendario}
-                onChange={(event) => {
-                  setMesCalendario(event.target.value);
-                  setDataSelecionada("");
-                }}
-              />
+              <div className="calendar-header-controls">
+                <button
+                  type="button"
+                  aria-label="Mes anterior"
+                  onClick={() =>
+                    setMesCalendario((mesAtual) => alterarMesInput(mesAtual, -1))
+                  }
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const hoje = obterHojeInput();
+                    setMesCalendario(obterMesInput(hoje));
+                    setDataSelecionada(hoje);
+                  }}
+                >
+                  Hoje
+                </button>
+                <button
+                  type="button"
+                  aria-label="Proximo mes"
+                  onClick={() =>
+                    setMesCalendario((mesAtual) => alterarMesInput(mesAtual, 1))
+                  }
+                >
+                  ›
+                </button>
+                <input
+                  aria-label="Escolher mes"
+                  type="month"
+                  value={mesCalendario}
+                  onChange={(event) => {
+                    setMesCalendario(event.target.value);
+                    setDataSelecionada("");
+                  }}
+                />
+              </div>
             </div>
 
             <div className="provider-calendar-weekdays">

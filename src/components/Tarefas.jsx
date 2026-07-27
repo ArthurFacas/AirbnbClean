@@ -101,6 +101,21 @@ function formatarMes(dataMes) {
   });
 }
 
+function alterarMesInput(dataMes, deslocamento) {
+  const data = new Date(`${dataMes}-01T00:00:00`);
+
+  if (Number.isNaN(data.getTime())) {
+    return obterMesInput(obterHojeInput());
+  }
+
+  data.setMonth(data.getMonth() + deslocamento);
+
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, "0");
+
+  return `${ano}-${mes}`;
+}
+
 function montarDiasDoMes(dataMes, tarefasPendentes, obterData = obterDataCheckout) {
   const [ano, mes] = dataMes.split("-").map(Number);
   const primeiroDia = new Date(ano, mes - 1, 1);
@@ -536,12 +551,38 @@ function Tarefas({
         <div className="monthly-calendar">
           <div className="monthly-calendar-header">
             <strong>{formatarMes(mesCalendario)}</strong>
-            <input
-              type="month"
-              value={mesCalendario}
-              onChange={(event) => setMesCalendario(event.target.value)}
-              aria-label="Escolher mes"
-            />
+            <div className="calendar-header-controls">
+              <button
+                type="button"
+                aria-label="Mes anterior"
+                onClick={() =>
+                  setMesCalendario((mesAtual) => alterarMesInput(mesAtual, -1))
+                }
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                onClick={() => setMesCalendario(obterMesInput(obterHojeInput()))}
+              >
+                Hoje
+              </button>
+              <button
+                type="button"
+                aria-label="Proximo mes"
+                onClick={() =>
+                  setMesCalendario((mesAtual) => alterarMesInput(mesAtual, 1))
+                }
+              >
+                ›
+              </button>
+              <input
+                type="month"
+                value={mesCalendario}
+                onChange={(event) => setMesCalendario(event.target.value)}
+                aria-label="Escolher mes"
+              />
+            </div>
           </div>
 
           <div className="calendar-weekdays">

@@ -157,6 +157,17 @@ function obterHojeInput() {
   return `${ano}-${mes}-${dia}`;
 }
 
+function obterOwnerIdUsuario(usuario) {
+  return usuario?.ownerId || usuario?.id || "";
+}
+
+function obterCabecalhosAutenticados(usuario, extras = {}) {
+  return {
+    ...extras,
+    ...(usuario?.token ? { Authorization: `Bearer ${usuario.token}` } : {}),
+  };
+}
+
 function montarEnderecoApartamento(apartamento) {
   return [
     apartamento.rua,
@@ -206,10 +217,14 @@ function App() {
   const [usuarioEstadoCarregadoId, setUsuarioEstadoCarregadoId] = useState("");
 
   const carregarEstadoUsuario = useCallback(async function carregarEstadoUsuario(
-    usuarioId,
+    usuario,
   ) {
+    const ownerId = obterOwnerIdUsuario(usuario);
     const resposta = await fetch(
-      `/api/state?ownerId=${encodeURIComponent(usuarioId)}`,
+      `/api/state?ownerId=${encodeURIComponent(ownerId)}`,
+      {
+        headers: obterCabecalhosAutenticados(usuario),
+      },
     );
 
     if (!resposta.ok) {
@@ -240,7 +255,7 @@ function App() {
         funcionariosCarregados,
       ),
     );
-    setUsuarioEstadoCarregadoId(String(usuarioId));
+    setUsuarioEstadoCarregadoId(String(usuario.id));
   }, []);
 
   useEffect(() => {
@@ -254,9 +269,19 @@ function App() {
         return;
       }
 
+      if (!usuarioLogado.token) {
+        setUsuarioLogado(null);
+        setFuncionarios([]);
+        setApartamentos([]);
+        setTarefas([]);
+        setUsuarioEstadoCarregadoId("");
+        setBancoCarregado(true);
+        return;
+      }
+
       try {
         setBancoCarregado(false);
-        await carregarEstadoUsuario(usuarioLogado.id);
+        await carregarEstadoUsuario(usuarioLogado);
       } catch {
         setFuncionarios([]);
         setApartamentos([]);
@@ -268,7 +293,7 @@ function App() {
     }
 
     carregarBanco();
-  }, [carregarEstadoUsuario, usuarioLogado?.id]);
+  }, [carregarEstadoUsuario, usuarioLogado]);
 
   useEffect(() => {
     if (usuarioLogado) {
@@ -289,11 +314,11 @@ function App() {
 
     fetch("/api/state", {
       method: "PUT",
-      headers: {
+      headers: obterCabecalhosAutenticados(usuarioLogado, {
         "Content-Type": "application/json",
-      },
+      }),
       body: JSON.stringify({
-        ownerId: usuarioLogado.id,
+        ownerId: obterOwnerIdUsuario(usuarioLogado),
         funcionarios,
         apartamentos,
         tarefas,
@@ -305,7 +330,7 @@ function App() {
     funcionarios,
     tarefas,
     usuarioEstadoCarregadoId,
-    usuarioLogado?.id,
+    usuarioLogado,
   ]);
 
   const hojeInput = obterHojeInput();
@@ -323,11 +348,11 @@ function App() {
 
     const resposta = await fetch("/api/state", {
       method: "PUT",
-      headers: {
+      headers: obterCabecalhosAutenticados(usuarioLogado, {
         "Content-Type": "application/json",
-      },
+      }),
       body: JSON.stringify({
-        ownerId: usuarioLogado.id,
+        ownerId: obterOwnerIdUsuario(usuarioLogado),
         funcionarios: estadoAtualizado.funcionarios,
         apartamentos: estadoAtualizado.apartamentos,
         tarefas: estadoAtualizado.tarefas,
@@ -357,6 +382,34 @@ function App() {
       tarefas,
       funcionariosAtualizados,
     );
+
+    if (novoFuncionario.cargo === "Gestora") {
+      const respostaGestora = await fetch("/api/auth/manager", {
+        method: "POST",
+        headers: obterCabecalhosAutenticados(usuarioLogado, {
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          nome: novoFuncionario.nome,
+          email: novoFuncionario.email,
+          confirmarEmail: novoFuncionario.email,
+          telefone: novoFuncionario.telefone,
+          cpf: funcionario.cpf,
+          senha: funcionario.senha,
+          confirmarSenha: funcionario.confirmarSenha,
+          permissoes: funcionario.permissoes,
+          apartamentosAcesso: funcionario.apartamentosAcesso,
+          apartamentosPermitidos: funcionario.apartamentosPermitidos,
+          prestadoresAcesso: funcionario.prestadoresAcesso,
+          prestadoresPermitidos: funcionario.prestadoresPermitidos,
+        }),
+      });
+      const dadosGestora = await respostaGestora.json();
+
+      if (!respostaGestora.ok) {
+        throw new Error(dadosGestora.erro || "Nao foi possivel criar a gestora.");
+      }
+    }
 
     await salvarEstadoAtualizado({
       funcionarios: funcionariosAtualizados,
@@ -748,9 +801,9 @@ function App() {
 
     const resposta = await fetch("/api/auth/account", {
       method: "DELETE",
-      headers: {
+      headers: obterCabecalhosAutenticados(usuarioLogado, {
         "Content-Type": "application/json",
-      },
+      }),
       body: JSON.stringify({
         usuarioId: usuarioLogado.id,
       }),
@@ -773,7 +826,12 @@ function App() {
     }
 
     const resposta = await fetch(
-      `/api/state?ownerId=${encodeURIComponent(usuarioLogado.id)}`,
+      `/api/state?ownerId=${encodeURIComponent(
+        obterOwnerIdUsuario(usuarioLogado),
+      )}`,
+      {
+        headers: obterCabecalhosAutenticados(usuarioLogado),
+      },
     );
 
     if (!resposta.ok) {
@@ -866,15 +924,22 @@ function App() {
           path="lista-funcionarios"
           element={
             <Listafuncionarios
+              apartamentos={apartamentos}
               funcionarios={funcionarios}
               onExcluir={excluirFuncionario}
+              usuario={usuarioLogado}
             />
           }
         />
         <Route
           path="cadastro-funcionario"
           element={
-            <Cadastrarfuncionario onCadastrar={cadastrarFuncionario} />
+            <Cadastrarfuncionario
+              apartamentos={apartamentos}
+              funcionarios={funcionarios}
+              onCadastrar={cadastrarFuncionario}
+              usuario={usuarioLogado}
+            />
           }
         />
         <Route

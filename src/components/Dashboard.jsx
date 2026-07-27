@@ -52,7 +52,7 @@ function DashboardHome({
           <span>{inicialUsuario}</span>
           <div>
             <strong>{usuario?.nome || "Usuario"}</strong>
-            <small>Master</small>
+            <small>{usuario?.papel || "Master"}</small>
           </div>
         </div>
       </header>
@@ -144,6 +144,7 @@ function Dashboard({
   const location = useLocation();
   const navigate = useNavigate();
   const isDashboardHome = location.pathname === "/dashboard";
+  const usuarioMaster = String(usuario?.papel || "Master") === "Master";
   const navItems = [
     { path: "/dashboard", label: "Dashboard", icon: "DB" },
     {
@@ -217,14 +218,16 @@ function Dashboard({
           Sair
         </button>
 
-        <button
-          className="sidebar-delete-account"
-          onClick={confirmarExclusaoConta}
-          type="button"
-        >
-          <span aria-hidden="true">EX</span>
-          Apagar conta
-        </button>
+        {usuarioMaster && (
+          <button
+            className="sidebar-delete-account"
+            onClick={confirmarExclusaoConta}
+            type="button"
+          >
+            <span aria-hidden="true">EX</span>
+            Apagar conta
+          </button>
+        )}
       </aside>
 
       <main className="dashboard-main">

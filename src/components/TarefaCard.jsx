@@ -64,7 +64,7 @@ function funcionarioNoMesmoBairro(funcionario, tarefa) {
 
   return Boolean(
     bairroApartamento &&
-      obterBairrosAtendidos(funcionario).includes(bairroApartamento),
+    obterBairrosAtendidos(funcionario).includes(bairroApartamento),
   );
 }
 
@@ -91,16 +91,18 @@ function TarefaCard({
   const urgenciaVisual = urgencia;
   const [editando, setEditando] = useState(false);
   const deveMostrarSelecao = !funcionario || editando;
-  const funcionariosOrdenados = [...funcionarios].sort((funcionarioA, funcionarioB) => {
-    const funcionarioAPerto = funcionarioNoMesmoBairro(funcionarioA, tarefa);
-    const funcionarioBPerto = funcionarioNoMesmoBairro(funcionarioB, tarefa);
+  const funcionariosOrdenados = [...funcionarios].sort(
+    (funcionarioA, funcionarioB) => {
+      const funcionarioAPerto = funcionarioNoMesmoBairro(funcionarioA, tarefa);
+      const funcionarioBPerto = funcionarioNoMesmoBairro(funcionarioB, tarefa);
 
-    if (funcionarioAPerto !== funcionarioBPerto) {
-      return funcionarioAPerto ? -1 : 1;
-    }
+      if (funcionarioAPerto !== funcionarioBPerto) {
+        return funcionarioAPerto ? -1 : 1;
+      }
 
-    return funcionarioA.nome.localeCompare(funcionarioB.nome, "pt-BR");
-  });
+      return funcionarioA.nome.localeCompare(funcionarioB.nome, "pt-BR");
+    },
+  );
   const funcionarioPerto = funcionario
     ? funcionarioNoMesmoBairro(funcionario, tarefa)
     : false;
@@ -122,7 +124,9 @@ function TarefaCard({
     <div className={`info-card task-card ${urgenciaVisual.classe}`}>
       <div className="task-card-top">
         <span className="status-chip">Pendente</span>
-        {tarefa.prioridade && <span className="priority-chip">⚠ Prioridade</span>}
+        {tarefa.prioridade && (
+          <span className="priority-chip">🚨 Prioridade</span>
+        )}
         <span
           className={`urgency-pill ${urgenciaVisual.classe}`}
           aria-label={urgenciaVisual.label}
@@ -160,10 +164,10 @@ function TarefaCard({
 
       <div className="task-responsible-box">
         <span>Responsavel</span>
-        <strong className={funcionario ? "" : "unassigned"}>{responsavel}</strong>
-        {funcionarioPerto && (
-          <small>Atende o bairro deste apartamento</small>
-        )}
+        <strong className={funcionario ? "" : "unassigned"}>
+          {responsavel}
+        </strong>
+        {funcionarioPerto && <small>Atende o bairro deste apartamento</small>}
       </div>
 
       {deveMostrarSelecao ? (

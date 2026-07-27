@@ -1,4 +1,9 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import PermissoesAdministrativas from "./PermissoesAdministrativas";
+import {
+  criarConfiguracaoPermissoesPadrao,
+} from "../utils/permissoesAdministrativas";
 
 function calcularIdade(nascimento) {
   const hoje = new Date();
@@ -76,8 +81,117 @@ function montarLinkWhatsapp(funcionario) {
     : "";
 }
 
-function Listafuncionarios({ funcionarios, onExcluir }) {
+function usuarioEhMaster(usuario) {
+  return String(usuario?.papel || "Master") === "Master";
+}
+
+function funcionarioEhGestora(funcionario) {
+  return String(funcionario?.cargo || "") === "Gestora";
+}
+
+function obterCabecalhosAutenticados(usuario, extras = {}) {
+  return {
+    ...extras,
+    ...(usuario?.token ? { Authorization: `Bearer ${usuario.token}` } : {}),
+  };
+}
+
+function montarConfiguracaoUsuario(usuarioPermissoes) {
+  return {
+    ...criarConfiguracaoPermissoesPadrao(),
+    permissoes:
+      usuarioPermissoes?.permissoes || criarConfiguracaoPermissoesPadrao().permissoes,
+    apartamentosAcesso: usuarioPermissoes?.apartamentosAcesso || "todos",
+    apartamentosPermitidos: Array.isArray(usuarioPermissoes?.apartamentosPermitidos)
+      ? usuarioPermissoes.apartamentosPermitidos.map(String)
+      : [],
+    prestadoresAcesso: usuarioPermissoes?.prestadoresAcesso || "todos",
+    prestadoresPermitidos: Array.isArray(usuarioPermissoes?.prestadoresPermitidos)
+      ? usuarioPermissoes.prestadoresPermitidos.map(String)
+      : [],
+  };
+}
+
+function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario }) {
   const navigate = useNavigate();
+  const podeAlterarGestora = usuarioEhMaster(usuario);
+  const [funcionarioPermissoes, setFuncionarioPermissoes] = useState("");
+  const [configuracaoPermissoes, setConfiguracaoPermissoes] = useState(
+    criarConfiguracaoPermissoesPadrao,
+  );
+  const [salvandoPermissoes, setSalvandoPermissoes] = useState(false);
+  const [erroPermissoes, setErroPermissoes] = useState("");
+
+  async function abrirPermissoes(funcionario) {
+    setErroPermissoes("");
+    setFuncionarioPermissoes(String(funcionario.id));
+
+    try {
+      const resposta = await fetch(
+        `/api/auth/manager-permissions?email=${encodeURIComponent(
+          funcionario.email,
+        )}`,
+        {
+          headers: obterCabecalhosAutenticados(usuario),
+        },
+      );
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(dados.erro || "Nao foi possivel carregar permissoes.");
+      }
+
+      setConfiguracaoPermissoes(montarConfiguracaoUsuario(dados));
+    } catch (erro) {
+      setErroPermissoes(erro.message || "Nao foi possivel carregar permissoes.");
+    }
+  }
+
+  async function salvarPermissoes(funcionario) {
+    setErroPermissoes("");
+
+    if (
+      configuracaoPermissoes.apartamentosAcesso === "selecionados" &&
+      !configuracaoPermissoes.apartamentosPermitidos.length
+    ) {
+      setErroPermissoes("Selecione pelo menos um apartamento.");
+      return;
+    }
+
+    if (
+      configuracaoPermissoes.prestadoresAcesso === "selecionados" &&
+      !configuracaoPermissoes.prestadoresPermitidos.length
+    ) {
+      setErroPermissoes("Selecione pelo menos um prestador.");
+      return;
+    }
+
+    setSalvandoPermissoes(true);
+
+    try {
+      const resposta = await fetch("/api/auth/manager-permissions", {
+        method: "PUT",
+        headers: obterCabecalhosAutenticados(usuario, {
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          email: funcionario.email,
+          ...configuracaoPermissoes,
+        }),
+      });
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(dados.erro || "Nao foi possivel salvar permissoes.");
+      }
+
+      setFuncionarioPermissoes("");
+    } catch (erro) {
+      setErroPermissoes(erro.message || "Nao foi possivel salvar permissoes.");
+    } finally {
+      setSalvandoPermissoes(false);
+    }
+  }
 
   return (
     <div className="content-page providers-admin-page">
@@ -188,13 +302,55 @@ function Listafuncionarios({ funcionarios, onExcluir }) {
                     Sem WhatsApp
                   </button>
                 )}
-                <button
-                  className="danger-action"
-                  onClick={() => onExcluir(funcionario.id)}
-                >
-                  Excluir
-                </button>
+                {podeAlterarGestora && funcionarioEhGestora(funcionario) && (
+                  <button
+                    className="secondary-action"
+                    type="button"
+                    onClick={() => abrirPermissoes(funcionario)}
+                  >
+                    Permissoes
+                  </button>
+                )}
+                {podeAlterarGestora || !funcionarioEhGestora(funcionario) ? (
+                  <button
+                    className="danger-action"
+                    onClick={() => onExcluir(funcionario.id)}
+                  >
+                    Excluir
+                  </button>
+                ) : null}
               </div>
+
+              {funcionarioPermissoes === String(funcionario.id) && (
+                <div className="provider-permissions-editor">
+                  <PermissoesAdministrativas
+                    apartamentos={apartamentos}
+                    configuracao={configuracaoPermissoes}
+                    funcionarios={funcionarios}
+                    onChange={setConfiguracaoPermissoes}
+                  />
+                  {erroPermissoes && (
+                    <p className="form-error">{erroPermissoes}</p>
+                  )}
+                  <div className="provider-actions">
+                    <button
+                      className="primary-action"
+                      type="button"
+                      disabled={salvandoPermissoes}
+                      onClick={() => salvarPermissoes(funcionario)}
+                    >
+                      {salvandoPermissoes ? "Salvando..." : "Salvar permissoes"}
+                    </button>
+                    <button
+                      className="secondary-action"
+                      type="button"
+                      onClick={() => setFuncionarioPermissoes("")}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
             </article>
           ))}
         </div>
