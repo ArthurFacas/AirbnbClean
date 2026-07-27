@@ -310,6 +310,16 @@ function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario
     navigate(`/prestador-preview/${funcionario.id}`);
   }
 
+  function confirmarExclusao(funcionario) {
+    const confirmou = window.confirm(
+      `Tem certeza que deseja excluir ${funcionario.nome || "este cadastro"}?`,
+    );
+
+    if (confirmou) {
+      onExcluir(funcionario.id);
+    }
+  }
+
   return (
     <div className="content-page providers-admin-page">
       <div className="page-title-row providers-admin-header">
@@ -402,16 +412,9 @@ function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario
               </div>
 
               <div className="provider-actions">
-                <button
-                  className="secondary-action"
-                  type="button"
-                  onClick={() => abrirAcesso(funcionario)}
-                >
-                  Ver acesso
-                </button>
                 {podeAlterarGestora && (
                   <button
-                    className="whatsapp-action"
+                    className="secondary-action"
                     type="button"
                     disabled={carregandoConvite === String(funcionario.id)}
                     onClick={() => {
@@ -456,7 +459,7 @@ function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario
                 {podeAlterarGestora || !funcionarioEhGestora(funcionario) ? (
                   <button
                     className="danger-action"
-                    onClick={() => onExcluir(funcionario.id)}
+                    onClick={() => confirmarExclusao(funcionario)}
                   >
                     Excluir
                   </button>
