@@ -1334,7 +1334,6 @@ async function salvarPermissoesGestora(dados, usuarioAtual) {
 
 async function criarConviteAcesso(dados, usuarioAtual, requisicao) {
   await garantirBanco();
-  garantirMaster(usuarioAtual);
 
   const ownerId = obterOwnerOperacional(usuarioAtual);
   const funcionarioId = String(dados.funcionarioId || "").trim();
@@ -1348,6 +1347,16 @@ async function criarConviteAcesso(dados, usuarioAtual, requisicao) {
 
   if (!validarEmail(email)) {
     erroConvite("Email cadastrado invalido.", 400);
+  }
+
+  if (cargoEhGestora(funcionario.cargo)) {
+    garantirMaster(usuarioAtual);
+  } else {
+    garantirPermissaoAcao(
+      usuarioAtual,
+      "administrarAcessosPrestadores",
+      "Sem permissao para enviar acesso de prestador.",
+    );
   }
 
   const usuarioExistente = buscarUsuarioPorEmail(email);
@@ -1419,13 +1428,22 @@ async function criarConviteAcesso(dados, usuarioAtual, requisicao) {
 
 async function obterStatusConviteAcesso(funcionarioId, usuarioAtual) {
   await garantirBanco();
-  garantirMaster(usuarioAtual);
 
   const ownerId = obterOwnerOperacional(usuarioAtual);
   const funcionario = buscarFuncionarioOperacional(ownerId, funcionarioId);
 
   if (!funcionario) {
     erroConvite("Pessoa cadastrada nao encontrada.", 404);
+  }
+
+  if (cargoEhGestora(funcionario.cargo)) {
+    garantirMaster(usuarioAtual);
+  } else {
+    garantirPermissaoAcao(
+      usuarioAtual,
+      "administrarAcessosPrestadores",
+      "Sem permissao para visualizar acesso de prestador.",
+    );
   }
 
   const convite = buscarConviteAtivoPorFuncionario(ownerId, funcionarioId);
@@ -1453,9 +1471,24 @@ async function obterStatusConviteAcesso(funcionarioId, usuarioAtual) {
 
 async function cancelarConviteAcesso(funcionarioId, usuarioAtual) {
   await garantirBanco();
-  garantirMaster(usuarioAtual);
 
   const ownerId = obterOwnerOperacional(usuarioAtual);
+  const funcionario = buscarFuncionarioOperacional(ownerId, funcionarioId);
+
+  if (!funcionario) {
+    erroConvite("Pessoa cadastrada nao encontrada.", 404);
+  }
+
+  if (cargoEhGestora(funcionario.cargo)) {
+    garantirMaster(usuarioAtual);
+  } else {
+    garantirPermissaoAcao(
+      usuarioAtual,
+      "administrarAcessosPrestadores",
+      "Sem permissao para cancelar acesso de prestador.",
+    );
+  }
+
   const agora = new Date().toISOString();
 
   banco

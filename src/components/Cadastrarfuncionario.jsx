@@ -132,8 +132,10 @@ function Cadastrarfuncionario({
       } else {
         navigate("/dashboard/lista-funcionarios");
       }
-    } catch {
-      setErro("Nao foi possivel salvar o prestador. Tente novamente.");
+    } catch (erroAtual) {
+      setErro(
+        erroAtual.message || "Nao foi possivel salvar o prestador. Tente novamente.",
+      );
     } finally {
       setSalvando(false);
     }

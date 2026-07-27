@@ -80,6 +80,10 @@ function usuarioEhMaster(usuario) {
   return normalizarCargo(usuario?.papel || "Master") === "master";
 }
 
+function usuarioPode(usuario, permissao) {
+  return usuarioEhMaster(usuario) || Boolean(usuario?.permissoes?.[permissao]);
+}
+
 function normalizarCargo(valor) {
   return String(valor || "")
     .trim()
@@ -120,6 +124,10 @@ function montarConfiguracaoUsuario(usuarioPermissoes) {
 function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario }) {
   const navigate = useNavigate();
   const podeAlterarGestora = usuarioEhMaster(usuario);
+  const podeAdministrarAcessos = usuarioPode(
+    usuario,
+    "administrarAcessosPrestadores",
+  );
   const [funcionarioPermissoes, setFuncionarioPermissoes] = useState("");
   const [configuracaoPermissoes, setConfiguracaoPermissoes] = useState(
     criarConfiguracaoPermissoesPadrao,
@@ -130,7 +138,7 @@ function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario
   const [carregandoConvite, setCarregandoConvite] = useState("");
 
   useEffect(() => {
-    if (!podeAlterarGestora || !usuario?.token) {
+    if (!podeAdministrarAcessos || !usuario?.token) {
       return;
     }
 
@@ -150,7 +158,7 @@ function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario
         })
         .catch(() => {});
     });
-  }, [funcionarios, podeAlterarGestora, usuario]);
+  }, [funcionarios, podeAdministrarAcessos, usuario]);
 
   async function abrirPermissoes(funcionario) {
     setErroPermissoes("");
@@ -412,7 +420,7 @@ function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario
               </div>
 
               <div className="provider-actions">
-                {podeAlterarGestora && (
+                {podeAdministrarAcessos && (
                   <button
                     className="secondary-action"
                     type="button"

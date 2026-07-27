@@ -383,7 +383,8 @@ function App() {
     });
 
     if (!resposta.ok) {
-      throw new Error("Nao foi possivel salvar no banco.");
+      const dados = await resposta.json().catch(() => ({}));
+      throw new Error(dados.erro || "Nao foi possivel salvar no banco.");
     }
   }
 
@@ -396,10 +397,9 @@ function App() {
       telefone: normalizarTelefoneWhatsapp(funcionario.telefone),
     };
     const funcionariosAtualizados = [...funcionarios, novoFuncionario];
-    const tarefasAtualizadas = atribuirTarefasPorPrestador(
-      tarefas,
-      funcionariosAtualizados,
-    );
+    const tarefasAtualizadas = usuarioPode(usuarioLogado, "atribuirTarefas")
+      ? atribuirTarefasPorPrestador(tarefas, funcionariosAtualizados)
+      : tarefas;
 
     await salvarEstadoAtualizado({
       funcionarios: funcionariosAtualizados,
