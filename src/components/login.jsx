@@ -15,6 +15,17 @@ const recuperacaoGestaoInicial = {
   confirmarSenha: "",
 };
 
+const cadastroMasterInicial = {
+  nome: "",
+  email: "",
+  confirmarEmail: "",
+  telefone: "",
+  cpf: "",
+  senha: "",
+  confirmarSenha: "",
+  chaveAtivacao: "",
+};
+
 const prestadorInicial = {
   email: "",
   telefone: "",
@@ -52,6 +63,7 @@ function Login({ onEntrar }) {
   const [recuperacaoGestao, setRecuperacaoGestao] = useState(
     recuperacaoGestaoInicial,
   );
+  const [cadastroMaster, setCadastroMaster] = useState(cadastroMasterInicial);
   const [prestador, setPrestador] = useState(prestadorInicial);
   const [convite, setConvite] = useState(conviteInicial);
   const [erro, setErro] = useState("");
@@ -141,6 +153,15 @@ function Login({ onEntrar }) {
     const { name, value } = event.target;
 
     setRecuperacaoGestao((dados) => ({
+      ...dados,
+      [name]: name === "cpf" ? formatarCpf(value) : value,
+    }));
+  }
+
+  function atualizarCadastroMaster(event) {
+    const { name, value } = event.target;
+
+    setCadastroMaster((dados) => ({
       ...dados,
       [name]: name === "cpf" ? formatarCpf(value) : value,
     }));
@@ -284,6 +305,53 @@ function Login({ onEntrar }) {
     }
   }
 
+  async function cadastrarMaster(event) {
+    event.preventDefault();
+
+    if (carregando) {
+      return;
+    }
+
+    if (
+      cadastroMaster.email.trim().toLowerCase() !==
+      cadastroMaster.confirmarEmail.trim().toLowerCase()
+    ) {
+      setErro("Os emails precisam ser iguais.");
+      return;
+    }
+
+    if (cadastroMaster.senha !== cadastroMaster.confirmarSenha) {
+      setErro("As senhas precisam ser iguais.");
+      return;
+    }
+
+    setErro("");
+    setSucesso("");
+    setCarregando(true);
+
+    try {
+      const resposta = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cadastroMaster),
+      });
+      const dados = await lerRespostaJson(resposta);
+
+      if (!resposta.ok) {
+        throw new Error(dados.erro || "Nao foi possivel criar a conta.");
+      }
+
+      setLogin({ ...loginInicial, email: dados.usuario?.email || cadastroMaster.email });
+      setCadastroMaster(cadastroMasterInicial);
+      setModo("gestao");
+      setSucesso("Conta Master criada. Entre com sua senha.");
+    } catch (erroAtual) {
+      setErro(erroAtual.message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
   async function recuperarSenhaPrestador(event) {
     event.preventDefault();
 
@@ -394,8 +462,10 @@ function Login({ onEntrar }) {
                   ? "Recuperar senha"
                 : modo === "convite"
                   ? "Criar meu acesso"
-                  : modo === "gestao-recuperar"
-                    ? "Recuperar senha"
+                : modo === "gestao-recuperar"
+                  ? "Recuperar senha"
+                  : modo === "master-cadastro"
+                    ? "Criar conta Master"
                   : "Sou da gestao"}
           </h1>
           <p>
@@ -407,8 +477,10 @@ function Login({ onEntrar }) {
                   ? "Confirme seus dados para criar uma nova senha."
                 : modo === "convite"
                   ? "Crie sua senha usando o convite enviado pelo Master."
-                  : modo === "gestao-recuperar"
-                    ? "Confirme seus dados de cadastro para criar uma nova senha."
+                : modo === "gestao-recuperar"
+                  ? "Confirme seus dados de cadastro para criar uma nova senha."
+                  : modo === "master-cadastro"
+                    ? "Use a chave de ativacao enviada por um Master."
                   : "Acesse o painel administrativo da CleanHost."}
           </p>
         </div>
@@ -508,8 +580,161 @@ function Login({ onEntrar }) {
               Recuperar senha
             </button>
 
+            <button
+              className="login-back-button"
+              type="button"
+              onClick={() => {
+                setModo("master-cadastro");
+                setErro("");
+                setSucesso("");
+              }}
+            >
+              Criar conta Master
+            </button>
+
             <button className="login-back-button" type="button" onClick={voltarSelecao}>
               Voltar
+            </button>
+          </form>
+        )}
+
+        {modo === "master-cadastro" && (
+          <form className="login-form" onSubmit={cadastrarMaster}>
+            <div className="login-field">
+              <label htmlFor="masterNome">Nome</label>
+              <input
+                id="masterNome"
+                name="nome"
+                type="text"
+                value={cadastroMaster.nome}
+                onChange={atualizarCadastroMaster}
+                placeholder="Seu nome"
+                required
+              />
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="masterEmail">Email</label>
+              <input
+                id="masterEmail"
+                name="email"
+                type="email"
+                value={cadastroMaster.email}
+                onChange={atualizarCadastroMaster}
+                placeholder="voce@email.com"
+                required
+              />
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="masterConfirmarEmail">Confirmar email</label>
+              <input
+                id="masterConfirmarEmail"
+                name="confirmarEmail"
+                type="email"
+                value={cadastroMaster.confirmarEmail}
+                onChange={atualizarCadastroMaster}
+                placeholder="Digite o email novamente"
+                required
+              />
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="masterTelefone">WhatsApp</label>
+              <input
+                id="masterTelefone"
+                name="telefone"
+                type="tel"
+                value={cadastroMaster.telefone}
+                onChange={atualizarCadastroMaster}
+                placeholder="(11) 99999-9999"
+                required
+              />
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="masterCpf">CPF</label>
+              <input
+                id="masterCpf"
+                name="cpf"
+                type="text"
+                value={cadastroMaster.cpf}
+                onChange={atualizarCadastroMaster}
+                placeholder="000.000.000-00"
+                maxLength={14}
+                required
+              />
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="masterSenha">Senha</label>
+              <div className="password-input">
+                <input
+                  id="masterSenha"
+                  name="senha"
+                  type={mostrarSenha ? "text" : "password"}
+                  value={cadastroMaster.senha}
+                  onChange={atualizarCadastroMaster}
+                  placeholder="Digite sua senha"
+                  minLength={6}
+                  required
+                />
+                <button
+                  type="button"
+                  aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
+                  onClick={() => setMostrarSenha((mostrar) => !mostrar)}
+                >
+                  {mostrarSenha ? "Ocultar" : "Ver"}
+                </button>
+              </div>
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="masterConfirmarSenha">Confirmar senha</label>
+              <input
+                id="masterConfirmarSenha"
+                name="confirmarSenha"
+                type={mostrarSenha ? "text" : "password"}
+                value={cadastroMaster.confirmarSenha}
+                onChange={atualizarCadastroMaster}
+                placeholder="Digite a senha novamente"
+                minLength={6}
+                required
+              />
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="masterChaveAtivacao">Chave de ativacao</label>
+              <input
+                id="masterChaveAtivacao"
+                name="chaveAtivacao"
+                type="text"
+                value={cadastroMaster.chaveAtivacao}
+                onChange={atualizarCadastroMaster}
+                placeholder="Cole a chave recebida"
+                required
+              />
+            </div>
+
+            {erro && <p className="login-error">{erro}</p>}
+            {sucesso && <p className="login-success">{sucesso}</p>}
+
+            <div className="login-actions">
+              <button type="submit" disabled={carregando}>
+                {carregando ? "Aguarde..." : "Criar conta Master"}
+              </button>
+            </div>
+
+            <button
+              className="login-back-button"
+              type="button"
+              onClick={() => {
+                setModo("gestao");
+                setErro("");
+                setSucesso("");
+              }}
+            >
+              Voltar para entrar
             </button>
           </form>
         )}

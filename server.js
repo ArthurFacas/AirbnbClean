@@ -170,6 +170,16 @@ async function garantirBanco() {
         usuario_id TEXT,
         cancelado_em TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS chaves_ativacao_master (
+        codigo_hash TEXT PRIMARY KEY,
+        criado_por_usuario_id INTEGER NOT NULL,
+        criado_em TEXT NOT NULL,
+        expira_em TEXT NOT NULL,
+        utilizado_em TEXT,
+        usuario_id INTEGER,
+        cancelado_em TEXT
+      );
     `);
 
     garantirColuna("funcionarios", "owner_id", "INTEGER");
@@ -517,6 +527,29 @@ function validarFuncionariosUnicos(funcionarios) {
       telefones.set(telefone, id);
     }
   });
+}
+
+function validarCorpoEstado(corpo) {
+  const listasObrigatorias = ["funcionarios", "apartamentos", "tarefas"];
+  const listasValidas = listasObrigatorias.every((lista) =>
+    Array.isArray(corpo?.[lista]),
+  );
+
+  if (!listasValidas) {
+    const erro = new Error("Estado invalido. Aguarde o carregamento dos dados.");
+    erro.status = 400;
+    throw erro;
+  }
+
+  if (
+    corpo.funcionarios.length === 0 &&
+    corpo.apartamentos.length === 0 &&
+    corpo.tarefas.length === 0
+  ) {
+    const erro = new Error("Estado vazio bloqueado para evitar perda de dados.");
+    erro.status = 409;
+    throw erro;
+  }
 }
 
 function normalizarCargo(valor) {
@@ -1205,6 +1238,93 @@ function criarCodigoConvite() {
 
 function criarHashConvite(codigo) {
   return createHash("sha256").update(String(codigo || "")).digest("hex");
+}
+
+function erroChaveAtivacao() {
+  const erro = new Error("Chave de ativacao invalida ou expirada.");
+  erro.status = 403;
+  throw erro;
+}
+
+function buscarChaveAtivacaoMaster(codigo) {
+  const chave = String(codigo || "").trim();
+
+  if (!chave) {
+    return null;
+  }
+
+  return banco
+    .prepare("SELECT * FROM chaves_ativacao_master WHERE codigo_hash = ?")
+    .get(criarHashConvite(chave));
+}
+
+function garantirChaveAtivacaoMasterValida(codigo) {
+  const chave = buscarChaveAtivacaoMaster(codigo);
+
+  if (
+    !chave ||
+    chave.cancelado_em ||
+    chave.utilizado_em ||
+    chave.usuario_id ||
+    new Date(chave.expira_em).getTime() < Date.now()
+  ) {
+    erroChaveAtivacao();
+  }
+
+  return chave;
+}
+
+async function criarChaveAtivacaoMaster(dados, usuarioAtual) {
+  await garantirBanco();
+  garantirMaster(usuarioAtual);
+
+  const diasInformados = Number(dados?.diasValidade || dados?.validadeDias || 7);
+  const diasValidade =
+    Number.isFinite(diasInformados) && diasInformados > 0
+      ? Math.min(Math.ceil(diasInformados), 30)
+      : 7;
+  const chave = criarCodigoConvite();
+  const agora = new Date();
+  const expiraEm = new Date(agora.getTime() + 1000 * 60 * 60 * 24 * diasValidade);
+
+  banco
+    .prepare(
+      `INSERT INTO chaves_ativacao_master (
+        codigo_hash, criado_por_usuario_id, criado_em, expira_em
+      )
+       VALUES (?, ?, ?, ?)`,
+    )
+    .run(
+      criarHashConvite(chave),
+      Number(usuarioAtual.id),
+      agora.toISOString(),
+      expiraEm.toISOString(),
+    );
+
+  return {
+    chave,
+    expiraEm: expiraEm.toISOString(),
+    diasValidade,
+  };
+}
+
+async function cancelarChaveAtivacaoMaster(dados, usuarioAtual) {
+  await garantirBanco();
+  garantirMaster(usuarioAtual);
+
+  const chave = garantirChaveAtivacaoMasterValida(
+    dados?.chaveAtivacao || dados?.chave || dados?.codigo,
+  );
+
+  banco
+    .prepare(
+      `UPDATE chaves_ativacao_master
+       SET cancelado_em = ?
+       WHERE codigo_hash = ?`,
+    )
+    .run(new Date().toISOString(), chave.codigo_hash);
+
+  return { ok: true };
 }
 
 function cargoEhGestora(valor) {
@@ -1905,16 +2025,10 @@ function prepararEstadoParaSalvar(usuario, estadoAtual, estadoNovo) {
 async function criarUsuario(dados) {
   await garantirBanco();
 
-  const masterExistente = banco
-    .prepare("SELECT id FROM usuarios WHERE papel = 'Master' LIMIT 1")
-    .get();
-
-  if (masterExistente) {
-    const erro = new Error("O cadastro publico esta desativado.");
-    erro.status = 403;
-    throw erro;
-  }
-
+  const chaveAtivacao = String(
+    dados.chaveAtivacao || dados.chave || dados.codigoAtivacao || "",
+  ).trim();
+  const chaveMaster = garantirChaveAtivacaoMasterValida(chaveAtivacao);
   const email = String(dados.email || "")
     .trim()
     .toLowerCase();
@@ -1967,21 +2081,41 @@ async function criarUsuario(dados) {
   }
 
   const { hash, salt } = criarHashSenha(senha);
-  const resultado = banco
-    .prepare(
-      `INSERT INTO usuarios (
-        email, nome, telefone, cpf, senha_hash, senha_salt, papel, ativo,
-        apartamentos_acesso, apartamentos_permitidos_json,
-        prestadores_acesso, prestadores_permitidos_json
-      )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(email, nome, telefone, cpf, hash, salt, "Master", 1, "todos", "[]", "todos", "[]");
-  const usuarioId = Number(resultado.lastInsertRowid);
+  let usuarioId;
 
-  banco
-    .prepare("UPDATE usuarios SET owner_id = ? WHERE id = ?")
-    .run(usuarioId, usuarioId);
+  banco.exec("BEGIN");
+
+  try {
+    const resultado = banco
+      .prepare(
+        `INSERT INTO usuarios (
+          email, nome, telefone, cpf, senha_hash, senha_salt, papel, ativo,
+          apartamentos_acesso, apartamentos_permitidos_json,
+          prestadores_acesso, prestadores_permitidos_json
+        )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(email, nome, telefone, cpf, hash, salt, "Master", 1, "todos", "[]", "todos", "[]");
+    usuarioId = Number(resultado.lastInsertRowid);
+
+    banco
+      .prepare("UPDATE usuarios SET owner_id = ? WHERE id = ?")
+      .run(usuarioId, usuarioId);
+    banco
+      .prepare(
+        `UPDATE chaves_ativacao_master
+         SET utilizado_em = ?, usuario_id = ?
+         WHERE codigo_hash = ?
+           AND utilizado_em IS NULL
+           AND cancelado_em IS NULL`,
+      )
+      .run(new Date().toISOString(), usuarioId, chaveMaster.codigo_hash);
+
+    banco.exec("COMMIT");
+  } catch (erro) {
+    banco.exec("ROLLBACK");
+    throw erro;
+  }
 
   return usuarioPublico({
     id: usuarioId,
@@ -2561,6 +2695,43 @@ const servidor = createServer(async (requisicao, resposta) => {
     return;
   }
 
+  if (requisicao.url?.startsWith("/api/auth/master-activation-keys")) {
+    try {
+      const usuarioAtual = autenticarRequisicaoUsuario(requisicao);
+
+      if (requisicao.method === "POST") {
+        enviarJson(
+          resposta,
+          201,
+          await criarChaveAtivacaoMaster(
+            JSON.parse(await lerCorpo(requisicao) || "{}"),
+            usuarioAtual,
+          ),
+        );
+        return;
+      }
+
+      if (requisicao.method === "DELETE") {
+        enviarJson(
+          resposta,
+          200,
+          await cancelarChaveAtivacaoMaster(
+            JSON.parse(await lerCorpo(requisicao) || "{}"),
+            usuarioAtual,
+          ),
+        );
+        return;
+      }
+
+      enviarJson(resposta, 405, { erro: "Metodo nao permitido." });
+    } catch (erro) {
+      enviarJson(resposta, erro.status || 500, {
+        erro: erro.message || "Nao foi possivel administrar a chave.",
+      });
+    }
+    return;
+  }
+
   if (requisicao.url?.startsWith("/api/state")) {
     try {
       const usuarioAtual = autenticarRequisicaoUsuario(requisicao);
@@ -2580,18 +2751,15 @@ const servidor = createServer(async (requisicao, resposta) => {
 
       if (requisicao.method === "PUT") {
         const corpo = JSON.parse(await lerCorpo(requisicao));
+        validarCorpoEstado(corpo);
         const donoId = garantirAcessoOperacional(
           usuarioAtual,
           corpo.ownerId || corpo.usuarioId || ownerId,
         );
         const estado = {
-          funcionarios: Array.isArray(corpo.funcionarios)
-            ? corpo.funcionarios
-            : [],
-          apartamentos: Array.isArray(corpo.apartamentos)
-            ? corpo.apartamentos
-            : [],
-          tarefas: Array.isArray(corpo.tarefas) ? corpo.tarefas : [],
+          funcionarios: corpo.funcionarios,
+          apartamentos: corpo.apartamentos,
+          tarefas: corpo.tarefas,
         };
 
         const estadoAtual = await carregarEstado(donoId);

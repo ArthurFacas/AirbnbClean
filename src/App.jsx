@@ -205,6 +205,14 @@ function obterCabecalhosAutenticados(usuario, extras = {}) {
   };
 }
 
+function estadoTemAlgumDado(estado) {
+  return Boolean(
+    estado?.funcionarios?.length ||
+      estado?.apartamentos?.length ||
+      estado?.tarefas?.length,
+  );
+}
+
 function montarEnderecoApartamento(apartamento) {
   return [
     apartamento.rua,
@@ -341,10 +349,14 @@ function App() {
   }, [usuarioLogado]);
 
   useEffect(() => {
+    const estadoCarregadoParaUsuario =
+      bancoCarregado &&
+      usuarioLogado?.id &&
+      usuarioEstadoCarregadoId === String(usuarioLogado.id);
+
     if (
-      !bancoCarregado ||
-      !usuarioLogado?.id ||
-      usuarioEstadoCarregadoId !== String(usuarioLogado.id)
+      !estadoCarregadoParaUsuario ||
+      !estadoTemAlgumDado({ funcionarios, apartamentos, tarefas })
     ) {
       return;
     }
@@ -379,7 +391,12 @@ function App() {
   );
 
   async function salvarEstadoAtualizado(estadoAtualizado) {
-    if (!usuarioLogado?.id) {
+    const estadoCarregadoParaUsuario =
+      bancoCarregado &&
+      usuarioLogado?.id &&
+      usuarioEstadoCarregadoId === String(usuarioLogado.id);
+
+    if (!estadoCarregadoParaUsuario) {
       return;
     }
 
