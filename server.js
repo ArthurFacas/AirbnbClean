@@ -1905,6 +1905,16 @@ function prepararEstadoParaSalvar(usuario, estadoAtual, estadoNovo) {
 async function criarUsuario(dados) {
   await garantirBanco();
 
+  const masterExistente = banco
+    .prepare("SELECT id FROM usuarios WHERE papel = 'Master' LIMIT 1")
+    .get();
+
+  if (masterExistente) {
+    const erro = new Error("O cadastro publico esta desativado.");
+    erro.status = 403;
+    throw erro;
+  }
+
   const email = String(dados.email || "")
     .trim()
     .toLowerCase();
@@ -2242,71 +2252,6 @@ async function excluirContaUsuario(dados, usuarioAtual) {
     banco.exec("ROLLBACK");
     throw erro;
   }
-}
-
-async function criarAcessoPrestador(dados) {
-  await garantirBanco();
-
-  const funcionarioId = String(dados.funcionarioId || "");
-  const email = String(dados.email || "")
-    .trim()
-    .toLowerCase();
-  const senha = String(dados.senha || "");
-  const confirmarSenha = String(dados.confirmarSenha || senha);
-  const prestador = await buscarPrestador(funcionarioId);
-
-  if (!prestador) {
-    const erro = new Error("Prestador nao encontrado.");
-    erro.status = 404;
-    throw erro;
-  }
-
-  garantirFuncionarioEhPrestador(prestador);
-
-  if (
-    email !==
-    String(prestador.email || "")
-      .trim()
-      .toLowerCase()
-  ) {
-    const erro = new Error("Use o email cadastrado pelo responsavel.");
-    erro.status = 400;
-    throw erro;
-  }
-
-  if (senha.length < 6) {
-    const erro = new Error("A senha precisa ter pelo menos 6 caracteres.");
-    erro.status = 400;
-    throw erro;
-  }
-
-  if (senha !== confirmarSenha) {
-    const erro = new Error("As senhas precisam ser iguais.");
-    erro.status = 400;
-    throw erro;
-  }
-
-  const acessoExistente = banco
-    .prepare(
-      "SELECT funcionario_id FROM prestador_acessos WHERE funcionario_id = ?",
-    )
-    .get(String(prestador.id));
-
-  if (acessoExistente) {
-    const erro = new Error("Este prestador ja criou o acesso.");
-    erro.status = 409;
-    throw erro;
-  }
-
-  const { hash, salt } = criarHashSenha(senha);
-  banco
-    .prepare(
-      `INSERT INTO prestador_acessos (funcionario_id, email, senha_hash, senha_salt)
-       VALUES (?, ?, ?, ?)`,
-    )
-    .run(String(prestador.id), email, hash, salt);
-
-  return prestadorPublico(prestador);
 }
 
 async function autenticarPrestador(dados) {
@@ -3005,12 +2950,8 @@ const servidor = createServer(async (requisicao, resposta) => {
         return;
       }
 
-      const prestador = await criarAcessoPrestador(
-        JSON.parse(await lerCorpo(requisicao)),
-      );
-      enviarJson(resposta, 201, {
-        prestador,
-        token: criarSessaoPrestador(prestador.id),
+      enviarJson(resposta, 403, {
+        erro: "Crie o acesso pelo link de convite enviado pelo responsavel.",
       });
     } catch (erro) {
       enviarJson(resposta, erro.status || 500, {

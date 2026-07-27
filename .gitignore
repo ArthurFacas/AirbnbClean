@@ -7,6 +7,13 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+data/*.sqlite
+data/*.sqlite-wal
+data/*.sqlite-shm
+data/database.json
+.env
+.env.*
+
 node_modules
 dist
 dist-ssr
