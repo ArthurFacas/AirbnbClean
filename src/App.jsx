@@ -29,6 +29,21 @@ function normalizarTextoComparacao(valor) {
     .toLowerCase();
 }
 
+function normalizarCargoFuncionario(valor) {
+  const texto = normalizarTextoComparacao(valor);
+  const cargoLimpezaAntigo = ["fa", "xina"].join("");
+
+  if (texto === cargoLimpezaAntigo) {
+    return "Limpeza";
+  }
+
+  if (["gestora", "gestao", "gerente"].includes(texto)) {
+    return "Gestora";
+  }
+
+  return String(valor || "").trim();
+}
+
 function obterBairrosAtendidos(funcionario) {
   return String(funcionario?.bairro || "")
     .split(/[,;|]/)
@@ -365,16 +380,11 @@ function App() {
   }
 
   async function cadastrarFuncionario(funcionario) {
-    const cargoLimpezaAntigo = ["fa", "xina"].join("");
     const novoFuncionario = {
       ...funcionario,
       id: Date.now(),
       bairro: String(funcionario.bairro || "").trim(),
-      cargo:
-        String(funcionario.cargo || "").trim().toLowerCase() ===
-        cargoLimpezaAntigo
-          ? "Limpeza"
-          : String(funcionario.cargo || "").trim(),
+      cargo: normalizarCargoFuncionario(funcionario.cargo),
       telefone: normalizarTelefoneWhatsapp(funcionario.telefone),
     };
     const funcionariosAtualizados = [...funcionarios, novoFuncionario];

@@ -20,6 +20,18 @@ function compararTarefasPorCheckout(tarefaA, tarefaB) {
   );
 }
 
+function normalizarPapelUsuario(valor) {
+  const texto = String(valor || "Master")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  return ["gestora", "gestao", "gerente"].includes(texto)
+    ? "Gestora"
+    : "Master";
+}
+
 function DashboardHome({
   apartamentoTotal,
   funcionarioTotal,
@@ -144,7 +156,7 @@ function Dashboard({
   const location = useLocation();
   const navigate = useNavigate();
   const isDashboardHome = location.pathname === "/dashboard";
-  const usuarioMaster = String(usuario?.papel || "Master") === "Master";
+  const usuarioMaster = normalizarPapelUsuario(usuario?.papel) === "Master";
   const navItems = [
     { path: "/dashboard", label: "Dashboard", icon: "DB" },
     {

@@ -13,6 +13,16 @@ function obterRotuloPrestador(prestador) {
   return [prestador.nome, prestador.cargo].filter(Boolean).join(" - ");
 }
 
+function cargoEhGestora(valor) {
+  const texto = String(valor || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  return ["gestora", "gestao", "gerente"].includes(texto);
+}
+
 function alternarId(lista, id) {
   const idTexto = String(id);
 
@@ -165,7 +175,7 @@ function PermissoesAdministrativas({
           {configuracao.prestadoresAcesso === "selecionados" && (
             <ListaSelecionavel
               itens={funcionarios.filter(
-                (funcionario) => funcionario.cargo !== "Gestora",
+                (funcionario) => !cargoEhGestora(funcionario.cargo),
               )}
               obterRotulo={obterRotuloPrestador}
               selecionados={configuracao.prestadoresPermitidos}

@@ -82,11 +82,21 @@ function montarLinkWhatsapp(funcionario) {
 }
 
 function usuarioEhMaster(usuario) {
-  return String(usuario?.papel || "Master") === "Master";
+  return normalizarCargo(usuario?.papel || "Master") === "master";
+}
+
+function normalizarCargo(valor) {
+  return String(valor || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 }
 
 function funcionarioEhGestora(funcionario) {
-  return String(funcionario?.cargo || "") === "Gestora";
+  return ["gestora", "gestao", "gerente"].includes(
+    normalizarCargo(funcionario?.cargo),
+  );
 }
 
 function obterCabecalhosAutenticados(usuario, extras = {}) {

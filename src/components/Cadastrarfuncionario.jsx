@@ -21,6 +21,18 @@ function usuarioEhMaster(usuario) {
   return String(usuario?.papel || "Master") === "Master";
 }
 
+function normalizarCargo(valor) {
+  return String(valor || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function cargoEhGestora(valor) {
+  return ["gestora", "gestao", "gerente"].includes(normalizarCargo(valor));
+}
+
 function formatarCpf(valor) {
   const numeros = String(valor || "").replace(/\D/g, "").slice(0, 11);
 
@@ -43,7 +55,7 @@ function Cadastrarfuncionario({
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const navigate = useNavigate();
-  const cadastrandoGestora = formulario.cargo === "Gestora";
+  const cadastrandoGestora = cargoEhGestora(formulario.cargo);
 
   function atualizarCampo(event) {
     const { name, value } = event.target;
@@ -201,7 +213,6 @@ function Cadastrarfuncionario({
         >
           <option value="">Selecione um cargo</option>
           <option value="Limpeza">Limpeza</option>
-          <option value="Gestao">Gestao</option>
           {usuarioEhMaster(usuario) && <option value="Gestora">Gestora</option>}
           <option value="Motoristas">Motoristas</option>
         </select>

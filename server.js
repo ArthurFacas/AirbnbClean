@@ -452,10 +452,21 @@ function normalizarArray(valor) {
 
 function normalizarCargo(valor) {
   const cargoLimpezaAntigo = ["fa", "xina"].join("");
+  const texto = String(valor || "").trim();
+  const textoNormalizado = texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 
-  return String(valor || "").trim().toLowerCase() === cargoLimpezaAntigo
-    ? "Limpeza"
-    : String(valor || "");
+  if (textoNormalizado === cargoLimpezaAntigo) {
+    return "Limpeza";
+  }
+
+  if (["gestora", "gestao", "gerente"].includes(textoNormalizado)) {
+    return "Gestora";
+  }
+
+  return texto;
 }
 
 function normalizarPapelUsuario(valor) {
@@ -465,7 +476,9 @@ function normalizarPapelUsuario(valor) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 
-  return texto === "gestora" ? "Gestora" : "Master";
+  return ["gestora", "gestao", "gerente"].includes(texto)
+    ? "Gestora"
+    : "Master";
 }
 
 function usuarioEhMaster(usuario) {
@@ -827,6 +840,8 @@ async function obterStatusAcessoPrestador(funcionarioId) {
     throw erro;
   }
 
+  garantirFuncionarioEhPrestador(prestador);
+
   const acesso = banco
     .prepare(
       "SELECT funcionario_id FROM prestador_acessos WHERE funcionario_id = ?",
@@ -847,6 +862,8 @@ async function carregarPortalPrestador(funcionarioId) {
     erro.status = 404;
     throw erro;
   }
+
+  garantirFuncionarioEhPrestador(prestador);
 
   const tarefas = banco
     .prepare(
@@ -980,6 +997,14 @@ function funcionarioEhGestora(funcionario) {
   return normalizarPapelUsuario(funcionario?.cargo) === "Gestora";
 }
 
+function garantirFuncionarioEhPrestador(funcionario) {
+  if (funcionarioEhGestora(funcionario)) {
+    const erro = new Error("Gestora deve acessar pelo painel administrativo.");
+    erro.status = 403;
+    throw erro;
+  }
+}
+
 function garantirEstadoOperacionalPermitido(usuario, estado, ownerId) {
   if (usuarioEhMaster(usuario)) {
     return;
@@ -996,7 +1021,8 @@ function garantirEstadoOperacionalPermitido(usuario, estado, ownerId) {
     .prepare(
       `SELECT id, nome, email, telefone, cargo
        FROM funcionarios
-       WHERE owner_id = ? AND cargo = 'Gestora'`,
+       WHERE owner_id = ?
+         AND cargo IN ('Gestora', 'gestora', 'Gestao', 'gestao', 'Gestão', 'gestão', 'Gerente', 'gerente')`,
     )
     .all(ownerId);
   const gestoresNovos = funcionariosNovos.filter(funcionarioEhGestora);
@@ -1693,6 +1719,8 @@ async function criarAcessoPrestador(dados) {
     throw erro;
   }
 
+  garantirFuncionarioEhPrestador(prestador);
+
   if (
     email !==
     String(prestador.email || "")
@@ -1755,6 +1783,8 @@ async function autenticarPrestador(dados) {
     throw erro;
   }
 
+  garantirFuncionarioEhPrestador(prestador);
+
   const acesso = banco
     .prepare(
       `SELECT funcionario_id, email, senha_hash, senha_salt
@@ -1795,6 +1825,8 @@ async function recuperarSenhaPrestador(dados) {
     erro.status = 400;
     throw erro;
   }
+
+  garantirFuncionarioEhPrestador(prestador);
 
   if (
     email !==
