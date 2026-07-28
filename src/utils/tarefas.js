@@ -28,37 +28,17 @@ export function criarDataCheckout(tarefa) {
 }
 
 export function calcularUrgencia(tarefa) {
-  const dataCheckout = criarDataCheckout(tarefa);
-  const horasAteCheckout =
-    (dataCheckout.getTime() - Date.now()) / (1000 * 60 * 60);
-
-  if (Number.isNaN(horasAteCheckout)) {
-    return {
-      chave: "verde",
-      label: "Acima de 24h",
-      classe: "urgency-green",
-    };
-  }
-
-  if (horasAteCheckout <= 12) {
+  if (tarefa?.prioridade) {
     return {
       chave: "vermelha",
-      label: "Menos de 12h",
+      label: "Checkout e check-in no mesmo dia",
       classe: "urgency-red",
-    };
-  }
-
-  if (horasAteCheckout <= 24) {
-    return {
-      chave: "amarela",
-      label: "Menos de 24h",
-      classe: "urgency-yellow",
     };
   }
 
   return {
     chave: "verde",
-    label: "Acima de 24h",
+    label: "Sem troca no mesmo dia",
     classe: "urgency-green",
   };
 }

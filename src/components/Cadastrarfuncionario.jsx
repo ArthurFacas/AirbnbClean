@@ -56,6 +56,7 @@ function Cadastrarfuncionario({
   const [erro, setErro] = useState("");
   const navigate = useNavigate();
   const cadastrandoGestora = cargoEhGestora(formulario.cargo);
+  const mostrarBairrosAtendidos = formulario.cargo && !cadastrandoGestora;
 
   function atualizarCampo(event) {
     const { name, value } = event.target;
@@ -177,17 +178,6 @@ function Cadastrarfuncionario({
           required
         />
 
-        <label htmlFor="bairro">Bairro(s) que atende</label>
-        <input
-          type="text"
-          id="bairro"
-          name="bairro"
-          value={formulario.bairro}
-          onChange={atualizarCampo}
-          placeholder="Ex: Centro, Jardins, Pinheiros"
-          required
-        />
-
         <label htmlFor="cargo">Cargo</label>
         <select
           id="cargo"
@@ -201,6 +191,21 @@ function Cadastrarfuncionario({
           {usuarioEhMaster(usuario) && <option value="Gestora">Gestora</option>}
           <option value="Motoristas">Motoristas</option>
         </select>
+
+        {mostrarBairrosAtendidos && (
+          <>
+            <label htmlFor="bairro">Bairro(s) que atende</label>
+            <input
+              type="text"
+              id="bairro"
+              name="bairro"
+              value={formulario.bairro}
+              onChange={atualizarCampo}
+              placeholder="Ex: Centro, Jardins, Pinheiros"
+              required
+            />
+          </>
+        )}
 
         {cadastrandoGestora && (
           <>

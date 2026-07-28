@@ -134,11 +134,7 @@ function TarefaCard({
         >
           <span className="urgency-dot"></span>
           <strong>
-            {urgenciaVisual.chave === "vermelha"
-              ? "Urgente"
-              : urgenciaVisual.chave === "amarela"
-                ? "Atencao"
-                : "Normal"}
+            {urgenciaVisual.chave === "vermelha" ? "Urgente" : "Normal"}
           </strong>
         </span>
       </div>

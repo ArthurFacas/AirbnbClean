@@ -675,11 +675,7 @@ function PortalPrestador({
             {!concluida && tarefa.prioridade && <span>🚨 Prioridade</span>}
             {!concluida && (
               <span className={`provider-urgency-label ${urgenciaVisual.classe}`}>
-                {urgenciaVisual.chave === "vermelha"
-                  ? "Urgente"
-                  : urgenciaVisual.chave === "amarela"
-                    ? "Atencao"
-                    : "Normal"}
+                {urgenciaVisual.chave === "vermelha" ? "Urgente" : "Normal"}
               </span>
             )}
             {!concluida && <i title={urgenciaVisual.label}></i>}

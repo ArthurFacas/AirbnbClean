@@ -150,6 +150,10 @@ function funcionarioEhGestora(funcionario) {
   );
 }
 
+function cargoEhGestora(valor) {
+  return ["gestora", "gestao", "gerente"].includes(normalizarCargo(valor));
+}
+
 function obterCabecalhosAutenticados(usuario, extras = {}) {
   return {
     ...extras,
@@ -203,6 +207,8 @@ function Listafuncionarios({
   const funcionarioEmEdicao = funcionarios.find(
     (funcionario) => String(funcionario.id) === funcionarioEditando,
   );
+  const editandoGestora = cargoEhGestora(formularioEdicao.cargo);
+  const mostrarBairrosNoModal = funcionarioEmEdicao && !editandoGestora;
   const bairrosSelecionadosEdicao = deduplicarBairros(
     separarBairros(formularioEdicao.bairrosSelecionados?.join(",")),
   );
@@ -482,7 +488,7 @@ function Listafuncionarios({
       separarBairros(formularioEdicao.bairrosSelecionados?.join(",")),
     );
 
-    if (!bairrosSelecionados.length) {
+    if (!editandoGestora && !bairrosSelecionados.length) {
       setErroEdicao("Selecione pelo menos um bairro atendido.");
       return;
     }
@@ -494,7 +500,9 @@ function Listafuncionarios({
       await onAtualizar({
         ...funcionario,
         ...formularioEdicao,
-        bairro: bairrosSelecionados.join(", "),
+        bairro: editandoGestora
+          ? funcionario.bairro || ""
+          : bairrosSelecionados.join(", "),
       });
       fecharEdicao();
     } catch (erro) {
@@ -591,10 +599,12 @@ function Listafuncionarios({
                   <span>WhatsApp</span>
                   <strong>{obterValor(funcionario.telefone)}</strong>
                 </div>
-                <div>
-                  <span>Bairro(s) que atende</span>
-                  <strong>{obterValor(funcionario.bairro)}</strong>
-                </div>
+                {!funcionarioEhGestora(funcionario) && (
+                  <div>
+                    <span>Bairro(s) que atende</span>
+                    <strong>{obterValor(funcionario.bairro)}</strong>
+                  </div>
+                )}
                 <div>
                   <span>Cargo</span>
                   <strong>{obterValor(funcionario.cargo)}</strong>
@@ -801,6 +811,7 @@ function Listafuncionarios({
               </div>
             </section>
 
+            {mostrarBairrosNoModal && (
             <section className="provider-edit-section">
               <div className="provider-edit-section-heading">
                 <h3>Bairros atendidos</h3>
@@ -886,6 +897,7 @@ function Listafuncionarios({
                 </div>
               )}
             </section>
+            )}
 
             {erroEdicao && <p className="form-error">{erroEdicao}</p>}
 
