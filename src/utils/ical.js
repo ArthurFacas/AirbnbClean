@@ -8,6 +8,33 @@ export function montarUrlIcal(valor) {
   return `https://www.airbnb.com/calendar/ical/${codigo}.ics`;
 }
 
+function formatarDataCalendario(ano, mes, dia) {
+  return `${String(ano).padStart(4, "0")}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+}
+
+function obterDiasNoMes(ano, mes) {
+  return new Date(ano, mes, 0).getDate();
+}
+
+function subtrairUmDiaCalendario(data) {
+  let ano = Number(data.slice(0, 4));
+  let mes = Number(data.slice(5, 7));
+  let dia = Number(data.slice(8, 10)) - 1;
+
+  if (dia > 0) {
+    return formatarDataCalendario(ano, mes, dia);
+  }
+
+  mes -= 1;
+
+  if (mes < 1) {
+    mes = 12;
+    ano -= 1;
+  }
+
+  return formatarDataCalendario(ano, mes, obterDiasNoMes(ano, mes));
+}
+
 function normalizarDataIcal(valor) {
   if (!valor) {
     return "";
@@ -16,7 +43,11 @@ function normalizarDataIcal(valor) {
   const texto = String(valor).trim();
 
   if (/^\d{8}$/.test(texto)) {
-    return `${texto.slice(0, 4)}-${texto.slice(4, 6)}-${texto.slice(6, 8)}`;
+    return formatarDataCalendario(
+      texto.slice(0, 4),
+      texto.slice(4, 6),
+      texto.slice(6, 8),
+    );
   }
 
   if (/^\d{8}T/.test(texto)) {
@@ -33,7 +64,7 @@ function normalizarDataIcal(valor) {
   const mes = String(data.getMonth() + 1).padStart(2, "0");
   const dia = String(data.getDate()).padStart(2, "0");
 
-  return `${ano}-${mes}-${dia}`;
+  return formatarDataCalendario(ano, mes, dia);
 }
 
 function desdobrarLinhasIcal(texto) {
@@ -57,6 +88,10 @@ function extrairValorIcal(linha) {
 
 export function parsearReservasIcal(texto) {
   return parsearTodosEventosIcal(texto).reservasFuturas;
+}
+
+export function parsearTodasReservasIcal(texto) {
+  return parsearTodosEventosIcal(texto).reservas;
 }
 
 function parsearTodosEventosIcal(texto) {
@@ -87,7 +122,10 @@ function parsearTodosEventosIcal(texto) {
     }
 
     if (linha.startsWith("DTEND")) {
-      eventoAtual.checkout = normalizarDataIcal(extrairValorIcal(linha));
+      const checkout = normalizarDataIcal(extrairValorIcal(linha));
+      eventoAtual.checkout = checkout && /VALUE=DATE/i.test(linha)
+        ? subtrairUmDiaCalendario(checkout)
+        : checkout;
     }
 
     if (linha.startsWith("SUMMARY")) {

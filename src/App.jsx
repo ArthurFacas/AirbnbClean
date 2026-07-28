@@ -463,6 +463,55 @@ function App() {
     return novoFuncionario;
   }
 
+  async function atualizarFuncionario(funcionarioAtualizado) {
+    const idAtualizado = String(funcionarioAtualizado.id);
+    const emailNovo = normalizarEmailComparacao(funcionarioAtualizado.email);
+    const telefoneNovo = normalizarTelefoneComparacao(funcionarioAtualizado.telefone);
+    const emailJaCadastrado = funcionarios.some(
+      (funcionarioAtual) =>
+        String(funcionarioAtual.id) !== idAtualizado &&
+        normalizarEmailComparacao(funcionarioAtual.email) === emailNovo,
+    );
+    const telefoneJaCadastrado = funcionarios.some(
+      (funcionarioAtual) =>
+        String(funcionarioAtual.id) !== idAtualizado &&
+        normalizarTelefoneComparacao(funcionarioAtual.telefone) === telefoneNovo,
+    );
+
+    if (emailJaCadastrado) {
+      throw new Error("Este email ja esta cadastrado.");
+    }
+
+    if (telefoneJaCadastrado) {
+      throw new Error("Este WhatsApp ja esta cadastrado.");
+    }
+
+    const funcionariosAtualizados = funcionarios.map((funcionario) =>
+      String(funcionario.id) === idAtualizado
+        ? {
+            ...funcionario,
+            ...funcionarioAtualizado,
+            id: funcionario.id,
+            bairro: String(funcionarioAtualizado.bairro || "").trim(),
+            cargo: normalizarCargoFuncionario(funcionarioAtualizado.cargo),
+            telefone: normalizarTelefoneWhatsapp(funcionarioAtualizado.telefone),
+          }
+        : funcionario,
+    );
+    const tarefasAtualizadas = usuarioPode(usuarioLogado, "atribuirTarefas")
+      ? atribuirTarefasPorPrestador(tarefas, funcionariosAtualizados)
+      : tarefas;
+
+    await salvarEstadoAtualizado({
+      funcionarios: funcionariosAtualizados,
+      apartamentos,
+      tarefas: tarefasAtualizadas,
+    });
+
+    setFuncionarios(funcionariosAtualizados);
+    setTarefas(tarefasAtualizadas);
+  }
+
   async function excluirFuncionario(id) {
     const funcionariosAtualizados = funcionarios.filter(
       (funcionario) => String(funcionario.id) !== String(id),
@@ -972,6 +1021,7 @@ function App() {
               <Listafuncionarios
                 apartamentos={apartamentos}
                 funcionarios={funcionarios}
+                onAtualizar={atualizarFuncionario}
                 onExcluir={excluirFuncionario}
                 usuario={usuarioLogado}
               />

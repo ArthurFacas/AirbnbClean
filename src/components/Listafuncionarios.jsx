@@ -62,6 +62,58 @@ function obterValor(valor, fallback = "Nao informado") {
     : fallback;
 }
 
+function normalizarBairroComparacao(valor) {
+  return String(valor || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function normalizarNomeBairro(valor) {
+  return String(valor || "").trim().replace(/\s+/g, " ");
+}
+
+function separarBairros(valor) {
+  return String(valor || "")
+    .split(",")
+    .map(normalizarNomeBairro)
+    .filter(Boolean);
+}
+
+function deduplicarBairros(bairros) {
+  const bairrosUnicos = new Map();
+
+  bairros.map(normalizarNomeBairro).filter(Boolean).forEach((bairro) => {
+    const chave = normalizarBairroComparacao(bairro);
+
+    if (!bairrosUnicos.has(chave)) {
+      bairrosUnicos.set(chave, bairro);
+    }
+  });
+
+  return [...bairrosUnicos.values()];
+}
+
+function montarBairrosDisponiveis(apartamentos, bairrosAtuais = []) {
+  const bairros = new Map();
+
+  [...apartamentos.map((apartamento) => apartamento.Bairro || apartamento.bairro), ...bairrosAtuais]
+    .map(normalizarNomeBairro)
+    .filter(Boolean)
+    .forEach((bairro) => {
+      const chave = normalizarBairroComparacao(bairro);
+
+      if (!bairros.has(chave)) {
+        bairros.set(chave, bairro);
+      }
+    });
+
+  return [...bairros.values()].sort((a, b) =>
+    a.localeCompare(b, "pt-BR", { sensitivity: "base" }),
+  );
+}
+
 function montarLinkWhatsapp(funcionario, linkConvite) {
   const telefone = String(funcionario.telefone || "").replace(/\D/g, "");
   const mensagem = [
@@ -121,9 +173,16 @@ function montarConfiguracaoUsuario(usuarioPermissoes) {
   };
 }
 
-function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario }) {
+function Listafuncionarios({
+  apartamentos = [],
+  funcionarios,
+  onAtualizar,
+  onExcluir,
+  usuario,
+}) {
   const navigate = useNavigate();
   const podeAlterarGestora = usuarioEhMaster(usuario);
+  const podeEditarPrestadores = usuarioPode(usuario, "editarPrestadores");
   const podeAdministrarAcessos = usuarioPode(
     usuario,
     "administrarAcessosPrestadores",
@@ -136,6 +195,10 @@ function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario
   const [erroPermissoes, setErroPermissoes] = useState("");
   const [convites, setConvites] = useState({});
   const [carregandoConvite, setCarregandoConvite] = useState("");
+  const [funcionarioEditando, setFuncionarioEditando] = useState("");
+  const [formularioEdicao, setFormularioEdicao] = useState({});
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+  const [erroEdicao, setErroEdicao] = useState("");
 
   useEffect(() => {
     if (!podeAdministrarAcessos || !usuario?.token) {
@@ -318,6 +381,85 @@ function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario
     navigate(`/prestador-preview/${funcionario.id}`);
   }
 
+  function abrirEdicao(funcionario) {
+    const bairrosSelecionados = deduplicarBairros(separarBairros(funcionario.bairro));
+
+    setErroEdicao("");
+    setFuncionarioEditando(String(funcionario.id));
+    setFormularioEdicao({
+      id: funcionario.id,
+      nome: funcionario.nome || "",
+      nascimento: funcionario.nascimento || "",
+      email: funcionario.email || "",
+      telefone: funcionario.telefone || "",
+      cargo: funcionario.cargo || "",
+      bairrosSelecionados,
+    });
+  }
+
+  function atualizarCampoEdicao(event) {
+    const { name, value } = event.target;
+
+    setFormularioEdicao((dadosAtuais) => ({
+      ...dadosAtuais,
+      [name]: value,
+    }));
+  }
+
+  function alternarBairroEdicao(bairro) {
+    setFormularioEdicao((dadosAtuais) => {
+      const selecionados = deduplicarBairros(
+        separarBairros(dadosAtuais.bairrosSelecionados?.join(",")),
+      );
+      const chave = normalizarBairroComparacao(bairro);
+      const bairroSelecionado = selecionados.some(
+        (item) => normalizarBairroComparacao(item) === chave,
+      );
+      const bairrosSelecionados = bairroSelecionado
+        ? selecionados.filter((item) => normalizarBairroComparacao(item) !== chave)
+        : [...selecionados, bairro];
+
+      return {
+        ...dadosAtuais,
+        bairrosSelecionados,
+      };
+    });
+  }
+
+  async function salvarEdicao(funcionario) {
+    if (!onAtualizar || salvandoEdicao) {
+      return;
+    }
+
+    const bairrosSelecionados = deduplicarBairros(
+      separarBairros(formularioEdicao.bairrosSelecionados?.join(",")),
+    );
+
+    if (!bairrosSelecionados.length) {
+      setErroEdicao("Selecione pelo menos um bairro atendido.");
+      return;
+    }
+
+    setSalvandoEdicao(true);
+    setErroEdicao("");
+
+    try {
+      await onAtualizar({
+        ...funcionario,
+        ...formularioEdicao,
+        bairro: bairrosSelecionados.join(", "),
+      });
+      setFuncionarioEditando("");
+      setFormularioEdicao({});
+    } catch (erro) {
+      setErroEdicao(
+        erro.message || "Nao foi possivel salvar as alteracoes do prestador.",
+      );
+    } finally {
+      setSalvandoEdicao(false);
+    }
+  }
+
   function confirmarExclusao(funcionario) {
     const confirmou = window.confirm(
       `Tem certeza que deseja excluir ${funcionario.nome || "este cadastro"}?`,
@@ -464,6 +606,16 @@ function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario
                     Permissoes
                   </button>
                 )}
+                {podeEditarPrestadores &&
+                  (podeAlterarGestora || !funcionarioEhGestora(funcionario)) && (
+                    <button
+                      className="secondary-action"
+                      type="button"
+                      onClick={() => abrirEdicao(funcionario)}
+                    >
+                      Editar
+                    </button>
+                  )}
                 {podeAlterarGestora || !funcionarioEhGestora(funcionario) ? (
                   <button
                     className="danger-action"
@@ -473,6 +625,158 @@ function Listafuncionarios({ apartamentos = [], funcionarios, onExcluir, usuario
                   </button>
                 ) : null}
               </div>
+
+              {funcionarioEditando === String(funcionario.id) && (
+                <form
+                  className="provider-edit-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    salvarEdicao(funcionario);
+                  }}
+                >
+                  <div className="provider-edit-grid">
+                    <label>
+                      <span>Nome</span>
+                      <input
+                        type="text"
+                        name="nome"
+                        value={formularioEdicao.nome || ""}
+                        onChange={atualizarCampoEdicao}
+                        required
+                      />
+                    </label>
+                    <label>
+                      <span>Nascimento</span>
+                      <input
+                        type="date"
+                        name="nascimento"
+                        value={formularioEdicao.nascimento || ""}
+                        onChange={atualizarCampoEdicao}
+                        required
+                      />
+                    </label>
+                    <label>
+                      <span>Email</span>
+                      <input
+                        type="email"
+                        name="email"
+                        value={formularioEdicao.email || ""}
+                        onChange={atualizarCampoEdicao}
+                        required
+                      />
+                    </label>
+                    <label>
+                      <span>WhatsApp</span>
+                      <input
+                        type="tel"
+                        name="telefone"
+                        value={formularioEdicao.telefone || ""}
+                        onChange={atualizarCampoEdicao}
+                        required
+                      />
+                    </label>
+                    <label>
+                      <span>Cargo</span>
+                      <select
+                        name="cargo"
+                        value={formularioEdicao.cargo || ""}
+                        onChange={atualizarCampoEdicao}
+                        required
+                      >
+                        <option value="">Selecione um cargo</option>
+                        <option value="Limpeza">Limpeza</option>
+                        {podeAlterarGestora && (
+                          <option value="Gestora">Gestora</option>
+                        )}
+                        <option value="Motoristas">Motoristas</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="provider-neighborhoods">
+                    <div>
+                      <strong>Bairros atendidos</strong>
+                      <span>Escolha entre os bairros dos apartamentos cadastrados.</span>
+                    </div>
+                    <div className="provider-neighborhood-actions">
+                      <button
+                        className="secondary-action"
+                        type="button"
+                        onClick={() =>
+                          setFormularioEdicao((dadosAtuais) => ({
+                            ...dadosAtuais,
+                            bairrosSelecionados: montarBairrosDisponiveis(
+                              apartamentos,
+                              separarBairros(funcionario.bairro),
+                            ),
+                          }))
+                        }
+                      >
+                        Selecionar todos
+                      </button>
+                      <button
+                        className="secondary-action"
+                        type="button"
+                        onClick={() =>
+                          setFormularioEdicao((dadosAtuais) => ({
+                            ...dadosAtuais,
+                            bairrosSelecionados: [],
+                          }))
+                        }
+                      >
+                        Limpar selecao
+                      </button>
+                    </div>
+                    <div className="provider-neighborhood-options">
+                      {montarBairrosDisponiveis(
+                        apartamentos,
+                        separarBairros(funcionario.bairro),
+                      ).map((bairro) => {
+                        const selecionado = separarBairros(
+                          formularioEdicao.bairrosSelecionados?.join(","),
+                        ).some(
+                          (item) =>
+                            normalizarBairroComparacao(item) ===
+                            normalizarBairroComparacao(bairro),
+                        );
+
+                        return (
+                          <button
+                            className={selecionado ? "active" : ""}
+                            key={normalizarBairroComparacao(bairro)}
+                            type="button"
+                            onClick={() => alternarBairroEdicao(bairro)}
+                          >
+                            {bairro}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {erroEdicao && <p className="form-error">{erroEdicao}</p>}
+
+                  <div className="provider-actions">
+                    <button
+                      className="primary-action"
+                      type="submit"
+                      disabled={salvandoEdicao}
+                    >
+                      {salvandoEdicao ? "Salvando..." : "Salvar alteracoes"}
+                    </button>
+                    <button
+                      className="secondary-action"
+                      type="button"
+                      onClick={() => {
+                        setFuncionarioEditando("");
+                        setFormularioEdicao({});
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </form>
+              )}
 
               {funcionarioPermissoes === String(funcionario.id) && (
                 <div className="provider-permissions-editor">

@@ -1983,6 +1983,71 @@
   background: #ffe4e6;
 }
 
+.provider-edit-form {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--dash-border, #e2e8f0);
+  padding-top: 14px;
+}
+
+.provider-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.provider-edit-grid label,
+.provider-neighborhoods {
+  display: grid;
+  gap: 7px;
+}
+
+.provider-edit-grid span,
+.provider-neighborhoods span {
+  color: var(--dash-muted, #64748b);
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.provider-edit-grid input,
+.provider-edit-grid select {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--dash-border, #d9e2ef);
+  border-radius: 12px;
+  background: #f8fafc;
+  color: var(--dash-text, #142033);
+  font-size: 14px;
+  font-weight: 800;
+  padding: 0 11px;
+}
+
+.provider-neighborhood-actions,
+.provider-neighborhood-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.provider-neighborhood-options button {
+  border: 1px solid var(--dash-border, #d9e2ef);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--dash-text, #142033);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 900;
+  min-height: 34px;
+  padding: 7px 11px;
+}
+
+.provider-neighborhood-options button.active {
+  border-color: #93c5fd;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
 .whatsapp-action {
   border: 1px solid #86efac;
   background: #16a34a;
@@ -4230,6 +4295,10 @@ textarea:focus-visible {
   }
 
   .provider-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-edit-grid {
     grid-template-columns: 1fr;
   }
 

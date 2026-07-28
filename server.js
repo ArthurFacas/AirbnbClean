@@ -15,6 +15,17 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3001);
+const RATE_LIMIT_MENSAGEM =
+  "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
+const rateLimiters = new Map();
+
+const RATE_LIMITS = {
+  login: { limite: 5, janelaMs: 15 * 60 * 1000 },
+  recuperacao: { limite: 3, janelaMs: 30 * 60 * 1000 },
+  chaveMasterCadastro: { limite: 5, janelaMs: 20 * 60 * 1000 },
+  chaveMasterGeracao: { limite: 10, janelaMs: 60 * 60 * 1000 },
+  convitePublico: { limite: 10, janelaMs: 15 * 60 * 1000 },
+};
 const DATA_DIR =
   process.env.DATA_DIR ||
   (process.env.RENDER ? "/var/data/cleanhost" : path.join(__dirname, "data"));
@@ -2598,6 +2609,110 @@ function lerCorpo(requisicao) {
   });
 }
 
+function normalizarEmailRateLimit(valor) {
+  return String(valor || "").trim().toLowerCase();
+}
+
+function obterIpCliente(requisicao) {
+  if (process.env.RENDER) {
+    const ipCloudflare = String(requisicao.headers["cf-connecting-ip"] || "")
+      .split(",")[0]
+      .trim();
+
+    if (ipCloudflare) {
+      return ipCloudflare;
+    }
+
+    const ipForwarded = String(requisicao.headers["x-forwarded-for"] || "")
+      .split(",")[0]
+      .trim();
+
+    if (ipForwarded) {
+      return ipForwarded;
+    }
+  }
+
+  return (
+    requisicao.socket?.remoteAddress ||
+    requisicao.connection?.remoteAddress ||
+    "ip-desconhecido"
+  );
+}
+
+function chaveRateLimit(nome, partes) {
+  return `${nome}:${partes.map((parte) => String(parte || "-")).join(":")}`;
+}
+
+function obterBucketRateLimit(nome) {
+  if (!rateLimiters.has(nome)) {
+    rateLimiters.set(nome, new Map());
+  }
+
+  return rateLimiters.get(nome);
+}
+
+function limparRateLimitExpirado(nome, agora = Date.now()) {
+  const bucket = obterBucketRateLimit(nome);
+
+  for (const [chave, entrada] of bucket.entries()) {
+    if (entrada.expiraEm <= agora) {
+      bucket.delete(chave);
+    }
+  }
+}
+
+function obterEntradaRateLimit(nome, chave, config, agora = Date.now()) {
+  limparRateLimitExpirado(nome, agora);
+
+  const bucket = obterBucketRateLimit(nome);
+  const atual = bucket.get(chave);
+
+  if (atual && atual.expiraEm > agora) {
+    return atual;
+  }
+
+  const entrada = {
+    tentativas: 0,
+    expiraEm: agora + config.janelaMs,
+  };
+  bucket.set(chave, entrada);
+  return entrada;
+}
+
+function verificarRateLimit(nome, chave, config) {
+  const agora = Date.now();
+  const entrada = obterEntradaRateLimit(nome, chave, config, agora);
+
+  if (entrada.tentativas >= config.limite) {
+    return {
+      bloqueado: true,
+      retryAfter: Math.max(1, Math.ceil((entrada.expiraEm - agora) / 1000)),
+    };
+  }
+
+  return { bloqueado: false, retryAfter: 0 };
+}
+
+function registrarTentativaRateLimit(nome, chave, config) {
+  const entrada = obterEntradaRateLimit(nome, chave, config);
+  entrada.tentativas += 1;
+}
+
+function limparRateLimit(nome, chave) {
+  obterBucketRateLimit(nome).delete(chave);
+}
+
+function enviarRateLimit(resposta, retryAfter) {
+  resposta.writeHead(429, {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Retry-After": String(Math.max(1, retryAfter)),
+    "Content-Type": "application/json; charset=utf-8",
+  });
+  resposta.end(JSON.stringify({ erro: RATE_LIMIT_MENSAGEM }));
+}
+
 async function servirArquivo(requisicao, resposta) {
   const url = new URL(requisicao.url, `http://${requisicao.headers.host}`);
   const caminhoUrl = url.pathname === "/" ? "/index.html" : url.pathname;
@@ -2700,14 +2815,30 @@ const servidor = createServer(async (requisicao, resposta) => {
       const usuarioAtual = autenticarRequisicaoUsuario(requisicao);
 
       if (requisicao.method === "POST") {
-        enviarJson(
-          resposta,
-          201,
-          await criarChaveAtivacaoMaster(
-            JSON.parse(await lerCorpo(requisicao) || "{}"),
-            usuarioAtual,
-          ),
+        const chave = chaveRateLimit("chave-master-geracao", [
+          usuarioAtual.id,
+        ]);
+        const bloqueio = verificarRateLimit(
+          "chave-master-geracao",
+          chave,
+          RATE_LIMITS.chaveMasterGeracao,
         );
+
+        if (bloqueio.bloqueado) {
+          enviarRateLimit(resposta, bloqueio.retryAfter);
+          return;
+        }
+
+        const resultado = await criarChaveAtivacaoMaster(
+          JSON.parse(await lerCorpo(requisicao) || "{}"),
+          usuarioAtual,
+        );
+        registrarTentativaRateLimit(
+          "chave-master-geracao",
+          chave,
+          RATE_LIMITS.chaveMasterGeracao,
+        );
+        enviarJson(resposta, 201, resultado);
         return;
       }
 
@@ -2795,11 +2926,29 @@ const servidor = createServer(async (requisicao, resposta) => {
         return;
       }
 
-      const usuario = await criarUsuario(
-        JSON.parse(await lerCorpo(requisicao)),
+      const chave = chaveRateLimit("chave-master-cadastro", [
+        obterIpCliente(requisicao),
+      ]);
+      const bloqueio = verificarRateLimit(
+        "chave-master-cadastro",
+        chave,
+        RATE_LIMITS.chaveMasterCadastro,
       );
+
+      if (bloqueio.bloqueado) {
+        enviarRateLimit(resposta, bloqueio.retryAfter);
+        return;
+      }
+
+      const corpo = JSON.parse(await lerCorpo(requisicao));
+      const usuario = await criarUsuario(corpo);
       enviarJson(resposta, 201, { usuario });
     } catch (erro) {
+      registrarTentativaRateLimit(
+        "chave-master-cadastro",
+        chaveRateLimit("chave-master-cadastro", [obterIpCliente(requisicao)]),
+        RATE_LIMITS.chaveMasterCadastro,
+      );
       enviarJson(resposta, erro.status || 500, {
         erro: erro.message || "Nao foi possivel criar a conta.",
       });
@@ -2808,17 +2957,40 @@ const servidor = createServer(async (requisicao, resposta) => {
   }
 
   if (requisicao.url?.startsWith("/api/auth/login")) {
+    let chaveLogin = null;
+
     try {
       if (requisicao.method !== "POST") {
         enviarJson(resposta, 405, { erro: "Metodo nao permitido." });
         return;
       }
 
-      const usuario = await autenticarUsuario(
-        JSON.parse(await lerCorpo(requisicao)),
+      const corpo = JSON.parse(await lerCorpo(requisicao));
+      chaveLogin = chaveRateLimit("login-admin", [
+        obterIpCliente(requisicao),
+        normalizarEmailRateLimit(corpo.email),
+      ]);
+      const bloqueio = verificarRateLimit(
+        "login-admin",
+        chaveLogin,
+        RATE_LIMITS.login,
       );
+
+      if (bloqueio.bloqueado) {
+        enviarRateLimit(resposta, bloqueio.retryAfter);
+        return;
+      }
+
+      const usuario = await autenticarUsuario(corpo);
+      limparRateLimit("login-admin", chaveLogin);
       enviarJson(resposta, 200, { usuario });
     } catch (erro) {
+      if (
+        chaveLogin &&
+        (erro.status === 400 || erro.status === 401 || erro.status === 403)
+      ) {
+        registrarTentativaRateLimit("login-admin", chaveLogin, RATE_LIMITS.login);
+      }
       enviarJson(resposta, erro.status || 500, {
         erro: erro.message || "Nao foi possivel entrar.",
       });
@@ -2833,7 +3005,28 @@ const servidor = createServer(async (requisicao, resposta) => {
         return;
       }
 
-      await recuperarSenhaUsuario(JSON.parse(await lerCorpo(requisicao)));
+      const corpo = JSON.parse(await lerCorpo(requisicao));
+      const chave = chaveRateLimit("recuperacao-admin", [
+        obterIpCliente(requisicao),
+        normalizarEmailRateLimit(corpo.email),
+      ]);
+      const bloqueio = verificarRateLimit(
+        "recuperacao-admin",
+        chave,
+        RATE_LIMITS.recuperacao,
+      );
+
+      if (bloqueio.bloqueado) {
+        enviarRateLimit(resposta, bloqueio.retryAfter);
+        return;
+      }
+
+      registrarTentativaRateLimit(
+        "recuperacao-admin",
+        chave,
+        RATE_LIMITS.recuperacao,
+      );
+      await recuperarSenhaUsuario(corpo);
       enviarJson(resposta, 200, { ok: true });
     } catch (erro) {
       enviarJson(resposta, erro.status || 500, {
@@ -2953,10 +3146,25 @@ const servidor = createServer(async (requisicao, resposta) => {
   }
 
   if (requisicao.url?.startsWith("/api/invite")) {
+    const chaveConvite = chaveRateLimit("convite-publico", [
+      obterIpCliente(requisicao),
+    ]);
+
     try {
       const url = new URL(requisicao.url, `http://${requisicao.headers.host}`);
 
       if (requisicao.method === "GET") {
+        const bloqueio = verificarRateLimit(
+          "convite-publico",
+          chaveConvite,
+          RATE_LIMITS.convitePublico,
+        );
+
+        if (bloqueio.bloqueado) {
+          enviarRateLimit(resposta, bloqueio.retryAfter);
+          return;
+        }
+
         enviarJson(
           resposta,
           200,
@@ -2966,6 +3174,17 @@ const servidor = createServer(async (requisicao, resposta) => {
       }
 
       if (requisicao.method === "POST") {
+        const bloqueio = verificarRateLimit(
+          "convite-publico",
+          chaveConvite,
+          RATE_LIMITS.convitePublico,
+        );
+
+        if (bloqueio.bloqueado) {
+          enviarRateLimit(resposta, bloqueio.retryAfter);
+          return;
+        }
+
         enviarJson(
           resposta,
           201,
@@ -2976,6 +3195,11 @@ const servidor = createServer(async (requisicao, resposta) => {
 
       enviarJson(resposta, 405, { erro: "Metodo nao permitido." });
     } catch (erro) {
+      registrarTentativaRateLimit(
+        "convite-publico",
+        chaveConvite,
+        RATE_LIMITS.convitePublico,
+      );
       enviarJson(resposta, erro.status || 500, {
         erro: erro.message || "Nao foi possivel usar o convite.",
       });
@@ -2984,10 +3208,25 @@ const servidor = createServer(async (requisicao, resposta) => {
   }
 
   if (requisicao.url?.startsWith("/api/auth/manager-invite")) {
+    const chaveConvite = chaveRateLimit("convite-publico", [
+      obterIpCliente(requisicao),
+    ]);
+
     try {
       const url = new URL(requisicao.url, `http://${requisicao.headers.host}`);
 
       if (requisicao.method === "GET") {
+        const bloqueio = verificarRateLimit(
+          "convite-publico",
+          chaveConvite,
+          RATE_LIMITS.convitePublico,
+        );
+
+        if (bloqueio.bloqueado) {
+          enviarRateLimit(resposta, bloqueio.retryAfter);
+          return;
+        }
+
         enviarJson(
           resposta,
           200,
@@ -3011,6 +3250,13 @@ const servidor = createServer(async (requisicao, resposta) => {
 
       enviarJson(resposta, 405, { erro: "Metodo nao permitido." });
     } catch (erro) {
+      if (requisicao.method === "GET") {
+        registrarTentativaRateLimit(
+          "convite-publico",
+          chaveConvite,
+          RATE_LIMITS.convitePublico,
+        );
+      }
       enviarJson(resposta, erro.status || 500, {
         erro: erro.message || "Nao foi possivel gerar o convite.",
       });
@@ -3019,9 +3265,24 @@ const servidor = createServer(async (requisicao, resposta) => {
   }
 
   if (requisicao.url?.startsWith("/api/auth/manager-register")) {
+    const chaveConvite = chaveRateLimit("convite-publico", [
+      obterIpCliente(requisicao),
+    ]);
+
     try {
       if (requisicao.method !== "POST") {
         enviarJson(resposta, 405, { erro: "Metodo nao permitido." });
+        return;
+      }
+
+      const bloqueio = verificarRateLimit(
+        "convite-publico",
+        chaveConvite,
+        RATE_LIMITS.convitePublico,
+      );
+
+      if (bloqueio.bloqueado) {
+        enviarRateLimit(resposta, bloqueio.retryAfter);
         return;
       }
 
@@ -3031,6 +3292,11 @@ const servidor = createServer(async (requisicao, resposta) => {
         await cadastrarAcessoPorConvite(JSON.parse(await lerCorpo(requisicao))),
       );
     } catch (erro) {
+      registrarTentativaRateLimit(
+        "convite-publico",
+        chaveConvite,
+        RATE_LIMITS.convitePublico,
+      );
       enviarJson(resposta, erro.status || 500, {
         erro: erro.message || "Nao foi possivel criar a gestora.",
       });
@@ -3130,20 +3396,47 @@ const servidor = createServer(async (requisicao, resposta) => {
   }
 
   if (requisicao.url?.startsWith("/api/provider/login")) {
+    let chaveLogin = null;
+
     try {
       if (requisicao.method !== "POST") {
         enviarJson(resposta, 405, { erro: "Metodo nao permitido." });
         return;
       }
 
-      const prestador = await autenticarPrestador(
-        JSON.parse(await lerCorpo(requisicao)),
+      const corpo = JSON.parse(await lerCorpo(requisicao));
+      chaveLogin = chaveRateLimit("login-prestador", [
+        obterIpCliente(requisicao),
+        normalizarEmailRateLimit(corpo.email),
+      ]);
+      const bloqueio = verificarRateLimit(
+        "login-prestador",
+        chaveLogin,
+        RATE_LIMITS.login,
       );
+
+      if (bloqueio.bloqueado) {
+        enviarRateLimit(resposta, bloqueio.retryAfter);
+        return;
+      }
+
+      const prestador = await autenticarPrestador(corpo);
+      limparRateLimit("login-prestador", chaveLogin);
       enviarJson(resposta, 200, {
         prestador,
         token: criarSessaoPrestador(prestador.id),
       });
     } catch (erro) {
+      if (
+        chaveLogin &&
+        (erro.status === 400 || erro.status === 401 || erro.status === 403)
+      ) {
+        registrarTentativaRateLimit(
+          "login-prestador",
+          chaveLogin,
+          RATE_LIMITS.login,
+        );
+      }
       enviarJson(resposta, erro.status || 500, {
         erro: erro.message || "Nao foi possivel entrar.",
       });
@@ -3158,9 +3451,28 @@ const servidor = createServer(async (requisicao, resposta) => {
         return;
       }
 
-      const prestador = await recuperarSenhaPrestador(
-        JSON.parse(await lerCorpo(requisicao)),
+      const corpo = JSON.parse(await lerCorpo(requisicao));
+      const chave = chaveRateLimit("recuperacao-prestador", [
+        obterIpCliente(requisicao),
+        normalizarEmailRateLimit(corpo.email),
+      ]);
+      const bloqueio = verificarRateLimit(
+        "recuperacao-prestador",
+        chave,
+        RATE_LIMITS.recuperacao,
       );
+
+      if (bloqueio.bloqueado) {
+        enviarRateLimit(resposta, bloqueio.retryAfter);
+        return;
+      }
+
+      registrarTentativaRateLimit(
+        "recuperacao-prestador",
+        chave,
+        RATE_LIMITS.recuperacao,
+      );
+      const prestador = await recuperarSenhaPrestador(corpo);
       enviarJson(resposta, 200, { prestador });
     } catch (erro) {
       enviarJson(resposta, erro.status || 500, {
