@@ -67,6 +67,14 @@ function normalizarDataIcal(valor) {
   return formatarDataCalendario(ano, mes, dia);
 }
 
+function normalizarTextoComparacao(valor) {
+  return String(valor || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
 function desdobrarLinhasIcal(texto) {
   return texto
     .replace(/\r\n/g, "\n")
@@ -86,6 +94,122 @@ function extrairValorIcal(linha) {
   return linha.slice(linha.indexOf(":") + 1).trim();
 }
 
+function extrairNomePropriedadeIcal(linha) {
+  const fim = linha.search(/[;:]/);
+
+  return (fim >= 0 ? linha.slice(0, fim) : linha).trim().toUpperCase();
+}
+
+function definirPropriedadeEvento(evento, linha) {
+  const propriedade = extrairNomePropriedadeIcal(linha);
+  const valor = extrairValorIcal(linha);
+
+  if (!propriedade) {
+    return;
+  }
+
+  evento.propriedades[propriedade] = valor;
+
+  if (propriedade === "DTSTART") {
+    evento.checkin = normalizarDataIcal(valor);
+    evento.dtstartLinha = linha;
+  }
+
+  if (propriedade === "DTEND") {
+    const checkout = normalizarDataIcal(valor);
+    evento.checkout = checkout;
+    evento.ultimoDiaOcupado =
+      checkout && /VALUE=DATE/i.test(linha)
+        ? subtrairUmDiaCalendario(checkout)
+        : checkout;
+    evento.dtendLinha = linha;
+  }
+
+  if (propriedade === "SUMMARY") {
+    evento.resumo = valor;
+  }
+
+  if (propriedade === "DESCRIPTION") {
+    evento.descricao = valor;
+  }
+
+  if (propriedade === "UID") {
+    evento.uid = valor;
+  }
+
+  if (propriedade === "STATUS") {
+    evento.status = valor;
+  }
+}
+
+export function classificarEventoIcal(evento) {
+  const resumo = normalizarTextoComparacao(evento?.resumo);
+  const descricao = normalizarTextoComparacao(evento?.descricao);
+  const uid = normalizarTextoComparacao(evento?.uid);
+  const status = normalizarTextoComparacao(evento?.status);
+  const texto = [resumo, descricao, uid].filter(Boolean).join(" ");
+
+  if (!evento?.checkin || !evento?.checkout || status === "cancelled") {
+    return "desconhecido";
+  }
+
+  if (
+    /\b(not available|unavailable|blocked|block|hold|indisponivel|indisponivel|bloqueado|bloqueio)\b/i.test(
+      texto,
+    )
+  ) {
+    return "bloqueio";
+  }
+
+  if (
+    /\b(reserved|reservation|reserva|booked|booking|airbnb)\b/i.test(texto) &&
+    !/\b(not available|unavailable|blocked|block|indisponivel|bloqueado|bloqueio)\b/i.test(
+      texto,
+    )
+  ) {
+    return "reserva";
+  }
+
+  return "desconhecido";
+}
+
+function normalizarEventoIcal(evento) {
+  const tipo = classificarEventoIcal(evento);
+
+  return {
+    ...evento,
+    tipo,
+    geraLimpeza: tipo === "reserva",
+    geraPrioridade: tipo === "reserva",
+  };
+}
+
+function obterChaveEventoIcal(evento) {
+  if (evento.uid) {
+    return `uid:${String(evento.uid).trim()}`;
+  }
+
+  return [
+    String(evento.checkin || "").slice(0, 10),
+    String(evento.checkout || "").slice(0, 10),
+    String(evento.resumo || "").trim(),
+  ].join("|");
+}
+
+function deduplicarEventosIcal(eventos) {
+  const eventosUnicos = new Map();
+
+  eventos.forEach((evento) => {
+    const chave = obterChaveEventoIcal(evento);
+
+    if (!eventosUnicos.has(chave)) {
+      eventosUnicos.set(chave, evento);
+    }
+  });
+
+  return [...eventosUnicos.values()];
+}
+
 export function parsearReservasIcal(texto) {
   return parsearTodosEventosIcal(texto).reservasFuturas;
 }
@@ -101,13 +225,15 @@ function parsearTodosEventosIcal(texto) {
 
   linhas.forEach((linha) => {
     if (linha === "BEGIN:VEVENT") {
-      eventoAtual = {};
+      eventoAtual = { propriedades: {} };
       return;
     }
 
     if (linha === "END:VEVENT") {
-      if (eventoAtual?.checkin && eventoAtual?.checkout) {
-        eventos.push(eventoAtual);
+      const eventoNormalizado = normalizarEventoIcal(eventoAtual);
+
+      if (eventoNormalizado.checkin && eventoNormalizado.checkout) {
+        eventos.push(eventoNormalizado);
       }
       eventoAtual = null;
       return;
@@ -117,20 +243,7 @@ function parsearTodosEventosIcal(texto) {
       return;
     }
 
-    if (linha.startsWith("DTSTART")) {
-      eventoAtual.checkin = normalizarDataIcal(extrairValorIcal(linha));
-    }
-
-    if (linha.startsWith("DTEND")) {
-      const checkout = normalizarDataIcal(extrairValorIcal(linha));
-      eventoAtual.checkout = checkout && /VALUE=DATE/i.test(linha)
-        ? subtrairUmDiaCalendario(checkout)
-        : checkout;
-    }
-
-    if (linha.startsWith("SUMMARY")) {
-      eventoAtual.resumo = extrairValorIcal(linha);
-    }
+    definirPropriedadeEvento(eventoAtual, linha);
   });
 
   const hoje = new Date();
@@ -139,12 +252,17 @@ function parsearTodosEventosIcal(texto) {
   const dia = String(hoje.getDate()).padStart(2, "0");
   const hojeInput = `${ano}-${mes}-${dia}`;
 
-  const reservasFuturas = eventos
+  const reservas = deduplicarEventosIcal(
+    eventos.filter((evento) => evento.geraLimpeza),
+  )
+    .sort((a, b) => a.checkout.localeCompare(b.checkout));
+  const reservasFuturas = reservas
     .filter((evento) => evento.checkout >= hojeInput)
     .sort((a, b) => a.checkout.localeCompare(b.checkout));
 
   return {
-    reservas: eventos.sort((a, b) => a.checkout.localeCompare(b.checkout)),
+    eventos: eventos.sort((a, b) => a.checkout.localeCompare(b.checkout)),
+    reservas,
     reservasFuturas,
   };
 }

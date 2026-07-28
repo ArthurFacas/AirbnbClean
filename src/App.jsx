@@ -178,11 +178,33 @@ function atribuirTarefasPorPrestador(tarefasAtuais, funcionariosAtuais) {
 }
 
 function obterChaveReserva(reserva) {
+  if (reserva.uid) {
+    return `uid:${String(reserva.uid).trim()}`;
+  }
+
   return [
     String(reserva.checkin || "").slice(0, 10),
     String(reserva.checkout || "").slice(0, 10),
     String(reserva.resumo || "").trim(),
   ].join("|");
+}
+
+function obterDataReserva(valor) {
+  if (!valor) {
+    return "";
+  }
+
+  return String(valor).slice(0, 10);
+}
+
+function tarefaCorrespondeReserva(tarefa, reserva) {
+  const chaveReserva = obterChaveReserva(reserva);
+  const chaveTarefa = tarefa.icalKey || tarefa.chaveReserva;
+
+  return (
+    (chaveTarefa && chaveTarefa === chaveReserva) ||
+    obterDataReserva(tarefa.checkout) === obterDataReserva(reserva.checkout)
+  );
 }
 
 function obterHojeInput() {
@@ -534,14 +556,6 @@ function App() {
     }
   }
 
-  function obterDataReserva(valor) {
-    if (!valor) {
-      return "";
-    }
-
-    return String(valor).slice(0, 10);
-  }
-
   function montarTarefasIcal(
     apartamento,
     apartamentoId,
@@ -567,13 +581,9 @@ function App() {
         const dataCheckout = obterDataReserva(reserva.checkout);
         const temCheckinNoMesmoDia = datasCheckin.has(dataCheckout);
         const chaveReserva = obterChaveReserva(reserva);
-        const tarefaExistente = tarefasExistentes.find((tarefa) => {
-          const chaveTarefa = tarefa.icalKey || tarefa.chaveReserva;
-
-          return chaveTarefa
-            ? chaveTarefa === chaveReserva
-            : obterDataReserva(tarefa.checkout) === dataCheckout;
-        });
+        const tarefaExistente = tarefasExistentes.find((tarefa) =>
+          tarefaCorrespondeReserva(tarefa, reserva),
+        );
         let tarefaId = tarefaExistente?.id || apartamentoId * 1000 + index + 1;
 
         while (
@@ -654,7 +664,6 @@ function App() {
       const tarefasDoApartamento = tarefasAtualizadas.filter(
         (tarefa) => String(tarefa.apartamentoId) === String(apartamento.id),
       );
-      const novasChaves = new Set(reservas.map(obterChaveReserva));
       const tarefasRecriadas = montarTarefasIcal(
         apartamentoAtualizado,
         apartamento.id,
@@ -686,14 +695,9 @@ function App() {
             return false;
           }
 
-          const chaveTarefa = tarefa.icalKey || tarefa.chaveReserva;
-          const aindaExiste = chaveTarefa
-            ? novasChaves.has(chaveTarefa)
-            : reservas.some(
-                (reserva) =>
-                  obterDataReserva(reserva.checkout) ===
-                  obterDataReserva(tarefa.checkout),
-              );
+          const aindaExiste = reservas.some((reserva) =>
+            tarefaCorrespondeReserva(tarefa, reserva),
+          );
 
           return aindaExiste && !idsRecriados.has(String(tarefa.id));
         }),
