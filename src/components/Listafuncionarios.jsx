@@ -197,8 +197,19 @@ function Listafuncionarios({
   const [carregandoConvite, setCarregandoConvite] = useState("");
   const [funcionarioEditando, setFuncionarioEditando] = useState("");
   const [formularioEdicao, setFormularioEdicao] = useState({});
+  const [bairroManual, setBairroManual] = useState("");
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [erroEdicao, setErroEdicao] = useState("");
+  const funcionarioEmEdicao = funcionarios.find(
+    (funcionario) => String(funcionario.id) === funcionarioEditando,
+  );
+  const bairrosSelecionadosEdicao = deduplicarBairros(
+    separarBairros(formularioEdicao.bairrosSelecionados?.join(",")),
+  );
+  const bairrosDisponiveisEdicao = montarBairrosDisponiveis(
+    apartamentos,
+    separarBairros(funcionarioEmEdicao?.bairro),
+  );
 
   useEffect(() => {
     if (!podeAdministrarAcessos || !usuario?.token) {
@@ -385,6 +396,7 @@ function Listafuncionarios({
     const bairrosSelecionados = deduplicarBairros(separarBairros(funcionario.bairro));
 
     setErroEdicao("");
+    setBairroManual("");
     setFuncionarioEditando(String(funcionario.id));
     setFormularioEdicao({
       id: funcionario.id,
@@ -426,6 +438,41 @@ function Listafuncionarios({
     });
   }
 
+  function adicionarBairroManual() {
+    const bairro = normalizarNomeBairro(bairroManual);
+
+    if (!bairro) {
+      return;
+    }
+
+    setFormularioEdicao((dadosAtuais) => ({
+      ...dadosAtuais,
+      bairrosSelecionados: deduplicarBairros([
+        ...separarBairros(dadosAtuais.bairrosSelecionados?.join(",")),
+        bairro,
+      ]),
+    }));
+    setBairroManual("");
+  }
+
+  function removerBairroSelecionado(bairro) {
+    const chave = normalizarBairroComparacao(bairro);
+
+    setFormularioEdicao((dadosAtuais) => ({
+      ...dadosAtuais,
+      bairrosSelecionados: deduplicarBairros(
+        separarBairros(dadosAtuais.bairrosSelecionados?.join(",")),
+      ).filter((item) => normalizarBairroComparacao(item) !== chave),
+    }));
+  }
+
+  function fecharEdicao() {
+    setFuncionarioEditando("");
+    setFormularioEdicao({});
+    setBairroManual("");
+    setErroEdicao("");
+  }
+
   async function salvarEdicao(funcionario) {
     if (!onAtualizar || salvandoEdicao) {
       return;
@@ -449,8 +496,7 @@ function Listafuncionarios({
         ...formularioEdicao,
         bairro: bairrosSelecionados.join(", "),
       });
-      setFuncionarioEditando("");
-      setFormularioEdicao({});
+      fecharEdicao();
     } catch (erro) {
       setErroEdicao(
         erro.message || "Nao foi possivel salvar as alteracoes do prestador.",
@@ -626,158 +672,6 @@ function Listafuncionarios({
                 ) : null}
               </div>
 
-              {funcionarioEditando === String(funcionario.id) && (
-                <form
-                  className="provider-edit-form"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    salvarEdicao(funcionario);
-                  }}
-                >
-                  <div className="provider-edit-grid">
-                    <label>
-                      <span>Nome</span>
-                      <input
-                        type="text"
-                        name="nome"
-                        value={formularioEdicao.nome || ""}
-                        onChange={atualizarCampoEdicao}
-                        required
-                      />
-                    </label>
-                    <label>
-                      <span>Nascimento</span>
-                      <input
-                        type="date"
-                        name="nascimento"
-                        value={formularioEdicao.nascimento || ""}
-                        onChange={atualizarCampoEdicao}
-                        required
-                      />
-                    </label>
-                    <label>
-                      <span>Email</span>
-                      <input
-                        type="email"
-                        name="email"
-                        value={formularioEdicao.email || ""}
-                        onChange={atualizarCampoEdicao}
-                        required
-                      />
-                    </label>
-                    <label>
-                      <span>WhatsApp</span>
-                      <input
-                        type="tel"
-                        name="telefone"
-                        value={formularioEdicao.telefone || ""}
-                        onChange={atualizarCampoEdicao}
-                        required
-                      />
-                    </label>
-                    <label>
-                      <span>Cargo</span>
-                      <select
-                        name="cargo"
-                        value={formularioEdicao.cargo || ""}
-                        onChange={atualizarCampoEdicao}
-                        required
-                      >
-                        <option value="">Selecione um cargo</option>
-                        <option value="Limpeza">Limpeza</option>
-                        {podeAlterarGestora && (
-                          <option value="Gestora">Gestora</option>
-                        )}
-                        <option value="Motoristas">Motoristas</option>
-                      </select>
-                    </label>
-                  </div>
-
-                  <div className="provider-neighborhoods">
-                    <div>
-                      <strong>Bairros atendidos</strong>
-                      <span>Escolha entre os bairros dos apartamentos cadastrados.</span>
-                    </div>
-                    <div className="provider-neighborhood-actions">
-                      <button
-                        className="secondary-action"
-                        type="button"
-                        onClick={() =>
-                          setFormularioEdicao((dadosAtuais) => ({
-                            ...dadosAtuais,
-                            bairrosSelecionados: montarBairrosDisponiveis(
-                              apartamentos,
-                              separarBairros(funcionario.bairro),
-                            ),
-                          }))
-                        }
-                      >
-                        Selecionar todos
-                      </button>
-                      <button
-                        className="secondary-action"
-                        type="button"
-                        onClick={() =>
-                          setFormularioEdicao((dadosAtuais) => ({
-                            ...dadosAtuais,
-                            bairrosSelecionados: [],
-                          }))
-                        }
-                      >
-                        Limpar selecao
-                      </button>
-                    </div>
-                    <div className="provider-neighborhood-options">
-                      {montarBairrosDisponiveis(
-                        apartamentos,
-                        separarBairros(funcionario.bairro),
-                      ).map((bairro) => {
-                        const selecionado = separarBairros(
-                          formularioEdicao.bairrosSelecionados?.join(","),
-                        ).some(
-                          (item) =>
-                            normalizarBairroComparacao(item) ===
-                            normalizarBairroComparacao(bairro),
-                        );
-
-                        return (
-                          <button
-                            className={selecionado ? "active" : ""}
-                            key={normalizarBairroComparacao(bairro)}
-                            type="button"
-                            onClick={() => alternarBairroEdicao(bairro)}
-                          >
-                            {bairro}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {erroEdicao && <p className="form-error">{erroEdicao}</p>}
-
-                  <div className="provider-actions">
-                    <button
-                      className="primary-action"
-                      type="submit"
-                      disabled={salvandoEdicao}
-                    >
-                      {salvandoEdicao ? "Salvando..." : "Salvar alteracoes"}
-                    </button>
-                    <button
-                      className="secondary-action"
-                      type="button"
-                      onClick={() => {
-                        setFuncionarioEditando("");
-                        setFormularioEdicao({});
-                      }}
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </form>
-              )}
-
               {funcionarioPermissoes === String(funcionario.id) && (
                 <div className="provider-permissions-editor">
                   <PermissoesAdministrativas
@@ -810,6 +704,208 @@ function Listafuncionarios({
               )}
             </article>
           ))}
+        </div>
+      )}
+
+      {funcionarioEmEdicao && (
+        <div
+          className="provider-edit-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              fecharEdicao();
+            }
+          }}
+        >
+          <form
+            aria-modal="true"
+            className="provider-edit-modal"
+            role="dialog"
+            onSubmit={(event) => {
+              event.preventDefault();
+              salvarEdicao(funcionarioEmEdicao);
+            }}
+          >
+            <div className="provider-edit-modal-header">
+              <div>
+                <span>Editar acesso</span>
+                <h2>{obterValor(funcionarioEmEdicao.nome, "Prestador")}</h2>
+              </div>
+              <button
+                aria-label="Fechar edicao"
+                className="provider-edit-close"
+                type="button"
+                onClick={fecharEdicao}
+              >
+                x
+              </button>
+            </div>
+
+            <section className="provider-edit-section">
+              <h3>Dados pessoais</h3>
+              <div className="provider-edit-grid">
+                <label>
+                  <span>Nome</span>
+                  <input
+                    type="text"
+                    name="nome"
+                    value={formularioEdicao.nome || ""}
+                    onChange={atualizarCampoEdicao}
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Nascimento</span>
+                  <input
+                    type="date"
+                    name="nascimento"
+                    value={formularioEdicao.nascimento || ""}
+                    onChange={atualizarCampoEdicao}
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    name="email"
+                    value={formularioEdicao.email || ""}
+                    onChange={atualizarCampoEdicao}
+                    required
+                  />
+                </label>
+                <label>
+                  <span>WhatsApp</span>
+                  <input
+                    type="tel"
+                    name="telefone"
+                    value={formularioEdicao.telefone || ""}
+                    onChange={atualizarCampoEdicao}
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Cargo</span>
+                  <select
+                    name="cargo"
+                    value={formularioEdicao.cargo || ""}
+                    onChange={atualizarCampoEdicao}
+                    required
+                  >
+                    <option value="">Selecione um cargo</option>
+                    <option value="Limpeza">Limpeza</option>
+                    {podeAlterarGestora && <option value="Gestora">Gestora</option>}
+                    <option value="Motoristas">Motoristas</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <section className="provider-edit-section">
+              <div className="provider-edit-section-heading">
+                <h3>Bairros atendidos</h3>
+                <div className="provider-neighborhood-actions">
+                  <button
+                    className="secondary-action"
+                    type="button"
+                    onClick={() =>
+                      setFormularioEdicao((dadosAtuais) => ({
+                        ...dadosAtuais,
+                        bairrosSelecionados: bairrosDisponiveisEdicao,
+                      }))
+                    }
+                  >
+                    Selecionar todos
+                  </button>
+                  <button
+                    className="secondary-action"
+                    type="button"
+                    onClick={() =>
+                      setFormularioEdicao((dadosAtuais) => ({
+                        ...dadosAtuais,
+                        bairrosSelecionados: [],
+                      }))
+                    }
+                  >
+                    Limpar selecao
+                  </button>
+                </div>
+              </div>
+
+              <div className="provider-neighborhood-options">
+                {bairrosDisponiveisEdicao.map((bairro) => {
+                  const selecionado = bairrosSelecionadosEdicao.some(
+                    (item) =>
+                      normalizarBairroComparacao(item) ===
+                      normalizarBairroComparacao(bairro),
+                  );
+
+                  return (
+                    <button
+                      className={selecionado ? "active" : ""}
+                      key={normalizarBairroComparacao(bairro)}
+                      type="button"
+                      onClick={() => alternarBairroEdicao(bairro)}
+                    >
+                      {bairro}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <label className="provider-manual-neighborhood">
+                <span>Outro bairro</span>
+                <div>
+                  <input
+                    type="text"
+                    value={bairroManual}
+                    onChange={(event) => setBairroManual(event.target.value)}
+                    placeholder="Digite um bairro"
+                  />
+                  <button
+                    className="secondary-action"
+                    type="button"
+                    onClick={adicionarBairroManual}
+                  >
+                    Adicionar
+                  </button>
+                </div>
+              </label>
+
+              {bairrosSelecionadosEdicao.length > 0 && (
+                <div className="provider-selected-neighborhoods">
+                  {bairrosSelecionadosEdicao.map((bairro) => (
+                    <button
+                      key={normalizarBairroComparacao(bairro)}
+                      type="button"
+                      onClick={() => removerBairroSelecionado(bairro)}
+                    >
+                      {bairro} <span aria-hidden="true">x</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {erroEdicao && <p className="form-error">{erroEdicao}</p>}
+
+            <div className="provider-edit-modal-actions">
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={fecharEdicao}
+              >
+                Cancelar
+              </button>
+              <button
+                className="primary-action"
+                type="submit"
+                disabled={salvandoEdicao}
+              >
+                {salvandoEdicao ? "Salvando..." : "Salvar alteracoes"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>
