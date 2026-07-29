@@ -9,7 +9,11 @@ import CadastroApartamento from "./components/Cadastroapartamento";
 import Listaapartamentos from "./components/Listaapartamentos";
 import PortalPrestador from "./components/PortalPrestador";
 import Tarefas from "./components/Tarefas";
-import { funcionarioPodeSerResponsavelLimpeza } from "./utils/cargos";
+import {
+  funcionarioPodeSerResponsavelLimpeza,
+  normalizarAtribuicoesTarefasLimpeza,
+  normalizarResponsavelTarefaLimpeza,
+} from "./utils/cargos";
 import { buscarReservasIcal } from "./utils/ical";
 
 function normalizarTelefoneWhatsapp(telefone) {
@@ -68,33 +72,14 @@ function usuarioPode(usuario, permissao) {
 }
 
 function escolherPrestadorParaTarefa(tarefa, funcionariosAtuais) {
-  const funcionarioAtual = funcionariosAtuais.find(
-    (funcionario) => String(funcionario.id) === String(tarefa.funcionarioId),
-  );
-
-  return funcionarioPodeSerResponsavelLimpeza(funcionarioAtual)
-    ? tarefa.funcionarioId
-    : "";
+  return normalizarResponsavelTarefaLimpeza(tarefa, funcionariosAtuais);
 }
 
 function atribuirTarefasPorPrestador(tarefasAtuais, funcionariosAtuais) {
-  const responsaveisLimpeza = funcionariosAtuais.filter(
-    funcionarioPodeSerResponsavelLimpeza,
+  return normalizarAtribuicoesTarefasLimpeza(
+    tarefasAtuais,
+    funcionariosAtuais,
   );
-  const idsResponsaveisLimpeza = new Set(
-    responsaveisLimpeza.map((funcionario) => String(funcionario.id)),
-  );
-
-  return tarefasAtuais.map((tarefa) => {
-    if (
-      tarefa.funcionarioId &&
-      !idsResponsaveisLimpeza.has(String(tarefa.funcionarioId))
-    ) {
-      return { ...tarefa, funcionarioId: "" };
-    }
-
-    return tarefa;
-  });
 }
 
 function obterChaveReserva(reserva) {

@@ -12,6 +12,7 @@ import { createReadStream } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import { normalizarAtribuicoesTarefasLimpeza } from "./src/utils/cargos.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3001);
@@ -315,7 +316,7 @@ async function carregarEstado(ownerId) {
     return { funcionarios: [], apartamentos: [], tarefas: [] };
   }
 
-  return normalizarEstadoPrestadorUnico({
+  const estado = {
     funcionarios: banco
       .prepare(
         `SELECT id, nome, nascimento, email, telefone, cargo, bairro
@@ -346,7 +347,16 @@ async function carregarEstado(ownerId) {
       )
       .all(donoId)
       .map(mapearTarefaDoBanco),
-  });
+  };
+  const estadoNormalizado = normalizarEstadoPrestadorUnico(estado);
+
+  persistirAtribuicoesTarefasNormalizadas(
+    estado.tarefas,
+    estadoNormalizado.tarefas,
+    donoId,
+  );
+
+  return estadoNormalizado;
 }
 
 async function salvarEstado(estado, ownerId) {
@@ -708,23 +718,33 @@ function obterOwnerOperacional(usuario) {
 function normalizarEstadoPrestadorUnico(estado) {
   const funcionarios = normalizarArray(estado.funcionarios);
   const tarefas = normalizarArray(estado.tarefas);
-  const funcionariosResponsaveis = funcionarios.filter(
-    funcionarioPodeSerResponsavelLimpeza,
-  );
-  const idsFuncionariosResponsaveis = new Set(
-    funcionariosResponsaveis.map((funcionario) => String(funcionario.id)),
-  );
 
   return {
     ...estado,
     funcionarios,
-    tarefas: tarefas.map((tarefa) =>
-      tarefa.funcionarioId &&
-      !idsFuncionariosResponsaveis.has(String(tarefa.funcionarioId))
-        ? { ...tarefa, funcionarioId: "" }
-        : tarefa,
+    tarefas: normalizarAtribuicoesTarefasLimpeza(
+      tarefas,
+      funcionarios,
     ),
   };
+}
+
+function persistirAtribuicoesTarefasNormalizadas(tarefasAtuais, tarefasNormalizadas, ownerId) {
+  const atuaisPorId = criarMapaPorId(tarefasAtuais);
+  const atualizarResponsavel = banco.prepare(
+    "UPDATE tarefas SET funcionario_id = ? WHERE owner_id = ? AND id = ?",
+  );
+
+  tarefasNormalizadas.forEach((tarefa) => {
+    const atual = atuaisPorId.get(String(tarefa.id));
+
+    if (
+      atual &&
+      String(atual.funcionarioId || "") !== String(tarefa.funcionarioId || "")
+    ) {
+      atualizarResponsavel.run(String(tarefa.funcionarioId || ""), ownerId, tarefa.id);
+    }
+  });
 }
 
 function lerJson(valor, fallback) {
@@ -1106,22 +1126,6 @@ function garantirMaster(usuario) {
 
 function funcionarioEhGestora(funcionario) {
   return normalizarPapelUsuario(funcionario?.cargo) === "Gestora";
-}
-
-function cargoEhResponsavelLimpeza(valor) {
-  const cargo = normalizarCargo(valor)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-  const cargoLimpezaAntigo = ["fa", "xina"].join("");
-
-  return ["prestador", "prestadores", "limpeza", cargoLimpezaAntigo].includes(
-    cargo,
-  );
-}
-
-function funcionarioPodeSerResponsavelLimpeza(funcionario) {
-  return cargoEhResponsavelLimpeza(funcionario?.cargo);
 }
 
 function garantirFuncionarioEhPrestador(funcionario) {
@@ -2901,11 +2905,11 @@ const servidor = createServer(async (requisicao, resposta) => {
           usuarioAtual,
           corpo.ownerId || corpo.usuarioId || ownerId,
         );
-        const estado = {
+        const estado = normalizarEstadoPrestadorUnico({
           funcionarios: corpo.funcionarios,
           apartamentos: corpo.apartamentos,
           tarefas: corpo.tarefas,
-        };
+        });
 
         const estadoAtual = await carregarEstado(donoId);
         garantirEstadoOperacionalPermitido(usuarioAtual, estado, donoId);
@@ -2916,10 +2920,11 @@ const servidor = createServer(async (requisicao, resposta) => {
         );
 
         await salvarEstado(estadoPermitido, donoId);
+        const estadoSalvo = await carregarEstado(donoId);
         enviarJson(
           resposta,
           200,
-          filtrarEstadoPorPermissoes(estadoPermitido, usuarioAtual),
+          filtrarEstadoPorPermissoes(estadoSalvo, usuarioAtual),
         );
         return;
       }
