@@ -1,6 +1,7 @@
 import { useState } from "react";
 import TarefaCard from "./TarefaCard";
 import { criarDataCheckout } from "../utils/tarefas";
+import { funcionarioPodeSerResponsavelLimpeza } from "../utils/cargos";
 
 function formatarDataCompleta(data) {
   if (!data) {
@@ -292,6 +293,12 @@ function Tarefas({
   const [diasCalendarioExpandidos, setDiasCalendarioExpandidos] = useState({});
   const dataAmanha = obterAmanha();
   const dataHoje = obterHojeInput();
+  const funcionariosResponsaveis = funcionarios.filter(
+    funcionarioPodeSerResponsavelLimpeza,
+  );
+  const idsFuncionariosResponsaveis = new Set(
+    funcionariosResponsaveis.map((funcionario) => String(funcionario.id)),
+  );
   const tarefasPendentes = tarefas
     .filter(
       (tarefa) =>
@@ -361,7 +368,7 @@ function Tarefas({
       : dataInicioPeriodo
         ? `de ${formatarDataCompleta(dataInicioPeriodo)}`
         : "filtradas";
-  const gruposWhatsappFiltroData = funcionarios
+  const gruposWhatsappFiltroData = funcionariosResponsaveis
     .map((funcionario) => ({
       funcionario,
       tarefas: tarefasFiltroDataVisiveis.filter(
@@ -370,7 +377,7 @@ function Tarefas({
     }))
     .filter((grupo) => grupo.tarefas.length);
   const gruposPrestadoresBase = [
-    ...funcionarios.map((funcionario) => ({
+    ...funcionariosResponsaveis.map((funcionario) => ({
       tipo: "funcionario",
       funcionario,
       titulo: funcionario.nome,
@@ -386,7 +393,11 @@ function Tarefas({
       funcionario: null,
       titulo: "Sem responsavel",
       subtitulo: "Tarefas aguardando atribuicao",
-      tarefas: tarefasPendentes.filter((tarefa) => !tarefa.funcionarioId),
+      tarefas: tarefasPendentes.filter(
+        (tarefa) =>
+          !tarefa.funcionarioId ||
+          !idsFuncionariosResponsaveis.has(String(tarefa.funcionarioId)),
+      ),
     },
   ];
   const gruposPrestadores = gruposPrestadoresBase.filter(
@@ -656,7 +667,7 @@ function Tarefas({
           {tarefasPendentes.map((tarefa) => (
             <TarefaCard
               key={tarefa.id}
-              funcionarios={funcionarios}
+              funcionarios={funcionariosResponsaveis}
               onAtribuirFuncionario={onAtribuirFuncionario}
               onAtualizarTarefa={onAtualizarTarefa}
               selectId={`lista-funcionario-${tarefa.id}`}
@@ -813,7 +824,7 @@ function Tarefas({
                   ).map((tarefa) => (
                     <TarefaCard
                       key={tarefa.id}
-                      funcionarios={funcionarios}
+                      funcionarios={funcionariosResponsaveis}
                       onAtribuirFuncionario={onAtribuirFuncionario}
                       onAtualizarTarefa={onAtualizarTarefa}
                       selectId={`data-funcionario-${tarefa.id}`}
@@ -936,7 +947,7 @@ function Tarefas({
                   {grupo.tarefas.map((tarefa) => (
                     <TarefaCard
                       key={tarefa.id}
-                      funcionarios={funcionarios}
+                      funcionarios={funcionariosResponsaveis}
                       onAtribuirFuncionario={onAtribuirFuncionario}
                       onAtualizarTarefa={onAtualizarTarefa}
                       selectId={`prestador-funcionario-${tarefa.id}`}
@@ -998,7 +1009,7 @@ function Tarefas({
                     : tarefasConcluidas
                   ).map((tarefa) => {
                     const responsavel = encontrarFuncionario(
-                      funcionarios,
+                      funcionariosResponsaveis,
                       tarefa.funcionarioId,
                     );
 

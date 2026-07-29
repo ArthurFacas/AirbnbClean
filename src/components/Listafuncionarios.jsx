@@ -4,6 +4,7 @@ import PermissoesAdministrativas from "./PermissoesAdministrativas";
 import {
   criarConfiguracaoPermissoesPadrao,
 } from "../utils/permissoesAdministrativas";
+import { cargoEhGestora } from "../utils/cargos";
 
 function calcularIdade(nascimento) {
   const hoje = new Date();
@@ -148,10 +149,6 @@ function funcionarioEhGestora(funcionario) {
   return ["gestora", "gestao", "gerente"].includes(
     normalizarCargo(funcionario?.cargo),
   );
-}
-
-function cargoEhGestora(valor) {
-  return ["gestora", "gestao", "gerente"].includes(normalizarCargo(valor));
 }
 
 function obterCabecalhosAutenticados(usuario, extras = {}) {
@@ -418,9 +415,17 @@ function Listafuncionarios({
   function atualizarCampoEdicao(event) {
     const { name, value } = event.target;
 
+    if (name === "cargo" && cargoEhGestora(value)) {
+      setErroEdicao("");
+      setBairroManual("");
+    }
+
     setFormularioEdicao((dadosAtuais) => ({
       ...dadosAtuais,
       [name]: value,
+      ...(name === "cargo" && cargoEhGestora(value)
+        ? { bairrosSelecionados: [] }
+        : {}),
     }));
   }
 
@@ -500,9 +505,7 @@ function Listafuncionarios({
       await onAtualizar({
         ...funcionario,
         ...formularioEdicao,
-        bairro: editandoGestora
-          ? funcionario.bairro || ""
-          : bairrosSelecionados.join(", "),
+        bairro: editandoGestora ? "" : bairrosSelecionados.join(", "),
       });
       fecharEdicao();
     } catch (erro) {

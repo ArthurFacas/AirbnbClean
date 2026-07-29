@@ -60,10 +60,16 @@ function Cadastrarfuncionario({
 
   function atualizarCampo(event) {
     const { name, value } = event.target;
+    const mudouParaGestora = name === "cargo" && cargoEhGestora(value);
+
+    if (mudouParaGestora) {
+      setErro("");
+    }
 
     setFormulario((dadosAtuais) => ({
       ...dadosAtuais,
       [name]: name === "cpf" ? formatarCpf(value) : value,
+      ...(mudouParaGestora ? { bairro: "" } : {}),
     }));
   }
 

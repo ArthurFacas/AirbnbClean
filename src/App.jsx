@@ -9,6 +9,7 @@ import CadastroApartamento from "./components/Cadastroapartamento";
 import Listaapartamentos from "./components/Listaapartamentos";
 import PortalPrestador from "./components/PortalPrestador";
 import Tarefas from "./components/Tarefas";
+import { funcionarioPodeSerResponsavelLimpeza } from "./utils/cargos";
 import { buscarReservasIcal } from "./utils/ical";
 
 function normalizarTelefoneWhatsapp(telefone) {
@@ -66,114 +67,33 @@ function usuarioPode(usuario, permissao) {
   return usuarioEhMaster(usuario) || Boolean(usuario?.permissoes?.[permissao]);
 }
 
-function obterBairrosAtendidos(funcionario) {
-  return String(funcionario?.bairro || "")
-    .split(/[,;|]/)
-    .map(normalizarTextoComparacao)
-    .filter(Boolean);
-}
-
-function prestadorAtendeBairro(funcionario, bairroApartamento) {
-  const bairroNormalizado = normalizarTextoComparacao(bairroApartamento);
-
-  return Boolean(
-    bairroNormalizado &&
-      obterBairrosAtendidos(funcionario).includes(bairroNormalizado),
-  );
-}
-
 function escolherPrestadorParaTarefa(tarefa, funcionariosAtuais) {
-  if (funcionariosAtuais.length === 1) {
-    return funcionariosAtuais[0]?.id || "";
-  }
-
-  const prestadoresDoBairro = funcionariosAtuais.filter((funcionario) =>
-    prestadorAtendeBairro(funcionario, tarefa.bairroApartamento),
+  const funcionarioAtual = funcionariosAtuais.find(
+    (funcionario) => String(funcionario.id) === String(tarefa.funcionarioId),
   );
 
-  if (!prestadoresDoBairro.length) {
-    return tarefa.funcionarioId || "";
-  }
-
-  const cargas = funcionariosAtuais.reduce((mapa, funcionario) => {
-    mapa[String(funcionario.id)] = 0;
-    return mapa;
-  }, {});
-
-  return prestadoresDoBairro
-    .sort((prestadorA, prestadorB) => {
-      const cargaA = cargas[String(prestadorA.id)] || 0;
-      const cargaB = cargas[String(prestadorB.id)] || 0;
-
-      if (cargaA !== cargaB) {
-        return cargaA - cargaB;
-      }
-
-      return String(prestadorA.nome || "").localeCompare(
-        String(prestadorB.nome || ""),
-        "pt-BR",
-      );
-    })[0].id;
+  return funcionarioPodeSerResponsavelLimpeza(funcionarioAtual)
+    ? tarefa.funcionarioId
+    : "";
 }
 
 function atribuirTarefasPorPrestador(tarefasAtuais, funcionariosAtuais) {
-  if (!funcionariosAtuais.length) {
-    return tarefasAtuais;
-  }
-
-  const cargas = tarefasAtuais.reduce((mapa, tarefa) => {
-    if (tarefa.funcionarioId) {
-      mapa[String(tarefa.funcionarioId)] =
-        (mapa[String(tarefa.funcionarioId)] || 0) + 1;
-    }
-
-    return mapa;
-  }, {});
+  const responsaveisLimpeza = funcionariosAtuais.filter(
+    funcionarioPodeSerResponsavelLimpeza,
+  );
+  const idsResponsaveisLimpeza = new Set(
+    responsaveisLimpeza.map((funcionario) => String(funcionario.id)),
+  );
 
   return tarefasAtuais.map((tarefa) => {
-    if (funcionariosAtuais.length === 1) {
-      return { ...tarefa, funcionarioId: funcionariosAtuais[0].id };
-    }
-
-    const funcionarioAtual = funcionariosAtuais.find(
-      (funcionario) => String(funcionario.id) === String(tarefa.funcionarioId),
-    );
-
     if (
-      funcionarioAtual &&
-      prestadorAtendeBairro(funcionarioAtual, tarefa.bairroApartamento)
+      tarefa.funcionarioId &&
+      !idsResponsaveisLimpeza.has(String(tarefa.funcionarioId))
     ) {
-      return tarefa;
+      return { ...tarefa, funcionarioId: "" };
     }
 
-    const prestadoresDoBairro = funcionariosAtuais.filter((funcionario) =>
-      prestadorAtendeBairro(funcionario, tarefa.bairroApartamento),
-    );
-
-    if (!prestadoresDoBairro.length) {
-      return tarefa;
-    }
-
-    const prestadorEscolhido = prestadoresDoBairro.sort(
-      (prestadorA, prestadorB) => {
-        const cargaA = cargas[String(prestadorA.id)] || 0;
-        const cargaB = cargas[String(prestadorB.id)] || 0;
-
-        if (cargaA !== cargaB) {
-          return cargaA - cargaB;
-        }
-
-        return String(prestadorA.nome || "").localeCompare(
-          String(prestadorB.nome || ""),
-          "pt-BR",
-        );
-      },
-    )[0];
-
-    cargas[String(prestadorEscolhido.id)] =
-      (cargas[String(prestadorEscolhido.id)] || 0) + 1;
-
-    return { ...tarefa, funcionarioId: prestadorEscolhido.id };
+    return tarefa;
   });
 }
 
@@ -461,11 +381,14 @@ function App() {
       throw new Error("Este WhatsApp ja esta cadastrado.");
     }
 
+    const cargoNormalizado = normalizarCargoFuncionario(funcionario.cargo);
     const novoFuncionario = {
       ...funcionario,
       id: Date.now(),
-      bairro: String(funcionario.bairro || "").trim(),
-      cargo: normalizarCargoFuncionario(funcionario.cargo),
+      bairro: funcionarioPodeSerResponsavelLimpeza({ cargo: cargoNormalizado })
+        ? String(funcionario.bairro || "").trim()
+        : "",
+      cargo: cargoNormalizado,
       telefone: normalizarTelefoneWhatsapp(funcionario.telefone),
     };
     const funcionariosAtualizados = [...funcionarios, novoFuncionario];
@@ -508,14 +431,19 @@ function App() {
       throw new Error("Este WhatsApp ja esta cadastrado.");
     }
 
+    const cargoNormalizado = normalizarCargoFuncionario(funcionarioAtualizado.cargo);
     const funcionariosAtualizados = funcionarios.map((funcionario) =>
       String(funcionario.id) === idAtualizado
         ? {
             ...funcionario,
             ...funcionarioAtualizado,
             id: funcionario.id,
-            bairro: String(funcionarioAtualizado.bairro || "").trim(),
-            cargo: normalizarCargoFuncionario(funcionarioAtualizado.cargo),
+            bairro: funcionarioPodeSerResponsavelLimpeza({
+              cargo: cargoNormalizado,
+            })
+              ? String(funcionarioAtualizado.bairro || "").trim()
+              : "",
+            cargo: cargoNormalizado,
             telefone: normalizarTelefoneWhatsapp(funcionarioAtualizado.telefone),
           }
         : funcionario,
@@ -837,8 +765,18 @@ function App() {
   }
 
   function atribuirFuncionarioTarefa(tarefaId, funcionarioId) {
+    const funcionarioSelecionado = funcionarios.find(
+      (funcionario) => String(funcionario.id) === String(funcionarioId),
+    );
+    const funcionarioIdSeguro = funcionarioPodeSerResponsavelLimpeza(
+      funcionarioSelecionado,
+    )
+      ? funcionarioId
+      : "";
     const tarefasAtualizadas = tarefas.map((tarefa) =>
-      tarefa.id === tarefaId ? { ...tarefa, funcionarioId } : tarefa,
+      tarefa.id === tarefaId
+        ? { ...tarefa, funcionarioId: funcionarioIdSeguro }
+        : tarefa,
     );
 
     setTarefas(tarefasAtualizadas);

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { calcularUrgencia } from "../utils/tarefas";
+import { funcionarioPodeSerResponsavelLimpeza } from "../utils/cargos";
 import SenhaPorta from "./SenhaPorta";
 
 function formatarData(data) {
@@ -86,12 +87,21 @@ function TarefaCard({
   onAtualizarTarefa,
   selectId,
 }) {
-  const funcionario = encontrarFuncionario(funcionarios, tarefa.funcionarioId);
+  const funcionariosResponsaveis = funcionarios.filter(
+    funcionarioPodeSerResponsavelLimpeza,
+  );
+  const funcionarioEncontrado = encontrarFuncionario(
+    funcionarios,
+    tarefa.funcionarioId,
+  );
+  const funcionario = funcionarioPodeSerResponsavelLimpeza(funcionarioEncontrado)
+    ? funcionarioEncontrado
+    : null;
   const urgencia = calcularUrgencia(tarefa);
   const urgenciaVisual = urgencia;
   const [editando, setEditando] = useState(false);
   const deveMostrarSelecao = !funcionario || editando;
-  const funcionariosOrdenados = [...funcionarios].sort(
+  const funcionariosOrdenados = [...funcionariosResponsaveis].sort(
     (funcionarioA, funcionarioB) => {
       const funcionarioAPerto = funcionarioNoMesmoBairro(funcionarioA, tarefa);
       const funcionarioBPerto = funcionarioNoMesmoBairro(funcionarioB, tarefa);
@@ -171,7 +181,7 @@ function TarefaCard({
           <label htmlFor={selectId}>Prestador responsavel</label>
           <select
             id={selectId}
-            value={tarefa.funcionarioId}
+            value={funcionario ? tarefa.funcionarioId : ""}
             onChange={selecionarFuncionario}
           >
             <option value="">Selecionar prestador de servico</option>

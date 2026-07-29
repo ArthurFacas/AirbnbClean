@@ -417,7 +417,7 @@ async function salvarEstado(estado, ownerId) {
         funcionario.email || "",
         funcionario.telefone || "",
         normalizarCargo(funcionario.cargo),
-        funcionario.bairro || "",
+        cargoEhGestora(funcionario.cargo) ? "" : funcionario.bairro || "",
       );
     });
 
@@ -708,24 +708,22 @@ function obterOwnerOperacional(usuario) {
 function normalizarEstadoPrestadorUnico(estado) {
   const funcionarios = normalizarArray(estado.funcionarios);
   const tarefas = normalizarArray(estado.tarefas);
-
-  if (funcionarios.length !== 1) {
-    return {
-      ...estado,
-      funcionarios,
-      tarefas,
-    };
-  }
-
-  const funcionarioUnico = funcionarios[0];
+  const funcionariosResponsaveis = funcionarios.filter(
+    funcionarioPodeSerResponsavelLimpeza,
+  );
+  const idsFuncionariosResponsaveis = new Set(
+    funcionariosResponsaveis.map((funcionario) => String(funcionario.id)),
+  );
 
   return {
     ...estado,
     funcionarios,
-    tarefas: tarefas.map((tarefa) => ({
-      ...tarefa,
-      funcionarioId: funcionarioUnico.id,
-    })),
+    tarefas: tarefas.map((tarefa) =>
+      tarefa.funcionarioId &&
+      !idsFuncionariosResponsaveis.has(String(tarefa.funcionarioId))
+        ? { ...tarefa, funcionarioId: "" }
+        : tarefa,
+    ),
   };
 }
 
@@ -1108,6 +1106,22 @@ function garantirMaster(usuario) {
 
 function funcionarioEhGestora(funcionario) {
   return normalizarPapelUsuario(funcionario?.cargo) === "Gestora";
+}
+
+function cargoEhResponsavelLimpeza(valor) {
+  const cargo = normalizarCargo(valor)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const cargoLimpezaAntigo = ["fa", "xina"].join("");
+
+  return ["prestador", "prestadores", "limpeza", cargoLimpezaAntigo].includes(
+    cargo,
+  );
+}
+
+function funcionarioPodeSerResponsavelLimpeza(funcionario) {
+  return cargoEhResponsavelLimpeza(funcionario?.cargo);
 }
 
 function garantirFuncionarioEhPrestador(funcionario) {
