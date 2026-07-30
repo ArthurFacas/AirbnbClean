@@ -80,6 +80,35 @@ function obterHojeInput() {
   return `${ano}-${mes}-${dia}`;
 }
 
+function formatarDataInput(data) {
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, "0");
+  const dia = String(data.getDate()).padStart(2, "0");
+
+  return `${ano}-${mes}-${dia}`;
+}
+
+function alterarDiaInput(dataInput, deslocamento) {
+  const dataBase = dataInput
+    ? new Date(`${dataInput}T00:00:00`)
+    : new Date(`${obterHojeInput()}T00:00:00`);
+
+  if (Number.isNaN(dataBase.getTime())) {
+    return obterHojeInput();
+  }
+
+  dataBase.setDate(dataBase.getDate() + deslocamento);
+
+  return formatarDataInput(dataBase);
+}
+
+function obterDataLimiteCalendario(dataHoje) {
+  const limite = new Date(`${dataHoje}T00:00:00`);
+  limite.setDate(limite.getDate() - 30);
+
+  return formatarDataInput(limite);
+}
+
 function obterMesInput(data) {
   const dataBase = data ? new Date(`${data}T00:00:00`) : new Date();
 
@@ -155,10 +184,6 @@ function montarDiasDoMes(dataMes, tarefasPendentes, obterData = obterDataCheckou
   return dias;
 }
 
-function limparTelefone(telefone) {
-  return String(telefone || "").replace(/\D/g, "");
-}
-
 function compararTarefasPorCheckout(tarefaA, tarefaB) {
   const dataA = criarDataCheckout(tarefaA).getTime();
   const dataB = criarDataCheckout(tarefaB).getTime();
@@ -216,44 +241,44 @@ function tarefaCombinaComBusca(tarefa, busca) {
   return camposBusca.some((campo) => normalizarBusca(campo).includes(termo));
 }
 
-function montarMensagemWhatsapp(funcionario, tarefasAmanha, dataAmanha) {
+function obterComentarioWhatsapp(tarefa) {
+  return (
+    String(tarefa.observacaoPrestador || tarefa.comentarios || tarefa.descricao || "")
+      .trim() || "Sem observacoes"
+  );
+}
+
+function montarMensagemWhatsappTarefas(tarefasSelecionadas) {
   return [
-    `Ola, ${funcionario.nome}.`,
-    `Tarefas de ${formatarDataCompleta(dataAmanha)}:`,
+    "🧹 *LISTA DE TAREFAS - LIMPEZA*",
     "",
-    tarefasAmanha.length
-      ? tarefasAmanha
-          .map(
-            (tarefa, index) =>
-              `${index + 1}. Apt ${tarefa.apartamento} - ${
-                tarefa.descricao
-              } - checkout ${formatarDataCompleta(tarefa.checkout)} ${
-                tarefa.horaCheckout || "11:00"
-              }${tarefa.prioridade ? " - PRIORIDADE" : ""}`,
-          )
-          .join("\n")
-      : "Nenhuma tarefa atribuida para amanha.",
+    tarefasSelecionadas.length
+      ? tarefasSelecionadas
+          .map((tarefa, index) => {
+            const linhas = [
+              `${index + 1}. *${obterRotuloTarefaCalendario(tarefa)}*`,
+              `📅 Data: ${formatarDataCompleta(obterDataCheckout(tarefa))}`,
+            ];
+
+            if (tarefa.prioridade) {
+              linhas.push(
+                "⚠️ Prioridade: Check-in e Check-out no mesmo dia",
+              );
+            }
+
+            linhas.push(`📝 Comentários: ${obterComentarioWhatsapp(tarefa)}`);
+
+            return linhas.join("\n");
+          })
+          .join("\n\n")
+      : "Nenhuma tarefa selecionada.",
   ].join("\n");
 }
 
-function montarMensagemWhatsappPeriodo(funcionario, tarefasPeriodo, tituloPeriodo) {
-  return [
-    `Ola, ${funcionario.nome}.`,
-    `Tarefas ${tituloPeriodo}:`,
-    "",
-    tarefasPeriodo.length
-      ? tarefasPeriodo
-          .map(
-            (tarefa, index) =>
-              `${index + 1}. ${obterRotuloTarefaCalendario(tarefa)} - ${
-                tarefa.descricao
-              } - checkout ${formatarDataCompleta(tarefa.checkout)} ${
-                tarefa.horaCheckout || "11:00"
-              }${tarefa.prioridade ? " - PRIORIDADE" : ""}`,
-          )
-          .join("\n")
-      : "Nenhuma tarefa atribuida nesse periodo.",
-  ].join("\n");
+function montarLinkWhatsapp(tarefasSelecionadas) {
+  return `https://wa.me/?text=${encodeURIComponent(
+    montarMensagemWhatsappTarefas(tarefasSelecionadas),
+  )}`;
 }
 
 function encontrarFuncionario(funcionarios, funcionarioId) {
@@ -307,6 +332,18 @@ function Tarefas({
     )
     .filter((tarefa) => tarefaCombinaComBusca(tarefa, buscaApartamento))
     .sort(compararTarefasPorCheckout);
+  const dataLimiteCalendario = obterDataLimiteCalendario(dataHoje);
+  const tarefasPendentesCalendario = tarefas
+    .filter((tarefa) => {
+      const dataCheckout = obterDataCheckout(tarefa);
+
+      return (
+        tarefa.status === "Pendente" &&
+        (!dataCheckout || dataCheckout >= dataLimiteCalendario)
+      );
+    })
+    .filter((tarefa) => tarefaCombinaComBusca(tarefa, buscaApartamento))
+    .sort(compararTarefasPorCheckout);
   const tarefasConcluidas = tarefas
     .filter((tarefa) => tarefa.status === "Concluida")
     .sort(compararTarefasPorCheckout);
@@ -319,14 +356,20 @@ function Tarefas({
   const tarefasPrioritarias = tarefasPendentes.filter(
     (tarefa) => tarefa.prioridade,
   ).length;
-  const diasDoCalendario = montarDiasDoMes(mesCalendario, tarefasPendentes);
-  const diasDoFiltroData = montarDiasDoMes(mesFiltroData, tarefasPendentes);
+  const diasDoCalendario = montarDiasDoMes(
+    mesCalendario,
+    tarefasPendentesCalendario,
+  );
+  const diasDoFiltroData = montarDiasDoMes(
+    mesFiltroData,
+    tarefasPendentesCalendario,
+  );
   const tarefasDaDataSelecionada = dataSelecionada
-    ? tarefasPendentes.filter(
+    ? tarefasPendentesCalendario.filter(
         (tarefa) => obterDataCheckout(tarefa) === dataSelecionada,
       )
     : [];
-  const tarefasDoPeriodoSelecionado = tarefasPendentes.filter((tarefa) => {
+  const tarefasDoPeriodoSelecionado = tarefasPendentesCalendario.filter((tarefa) => {
     const dataCheckout = obterDataCheckout(tarefa);
 
     if (!dataCheckout) {
@@ -368,14 +411,9 @@ function Tarefas({
       : dataInicioPeriodo
         ? `de ${formatarDataCompleta(dataInicioPeriodo)}`
         : "filtradas";
-  const gruposWhatsappFiltroData = funcionariosResponsaveis
-    .map((funcionario) => ({
-      funcionario,
-      tarefas: tarefasFiltroDataVisiveis.filter(
-        (tarefa) => String(tarefa.funcionarioId) === String(funcionario.id),
-      ),
-    }))
-    .filter((grupo) => grupo.tarefas.length);
+  const linkWhatsappFiltroData = tarefasFiltroDataVisiveis.length
+    ? montarLinkWhatsapp(tarefasFiltroDataVisiveis)
+    : "";
   const gruposPrestadoresBase = [
     ...funcionariosResponsaveis.map((funcionario) => ({
       tipo: "funcionario",
@@ -412,6 +450,21 @@ function Tarefas({
     setMesRetornoCalendario(mesCalendario);
     setDataSelecionada(data);
     setDataAbertaPeloCalendario(true);
+    setVisualizacao("data");
+  }
+
+  function navegarDiaSelecionado(deslocamento) {
+    const proximaData = alterarDiaInput(
+      dataSelecionada || dataInicioPeriodo || dataHoje,
+      deslocamento,
+    );
+
+    setDataSelecionada(proximaData);
+    setDataInicioPeriodo(proximaData);
+    setDataFimPeriodo("");
+    setDataInicioFiltro(proximaData);
+    setDataFimFiltro("");
+    setMesFiltroData(obterMesInput(proximaData));
     setVisualizacao("data");
   }
 
@@ -764,56 +817,50 @@ function Tarefas({
             </div>
           )}
 
+          {dataSelecionada && (
+            <div className="date-navigation-row">
+              <button
+                type="button"
+                aria-label="Dia anterior"
+                onClick={() => navegarDiaSelecionado(-1)}
+              >
+                â€¹
+              </button>
+              <strong>{formatarDataCompleta(dataSelecionada)}</strong>
+              <button
+                type="button"
+                aria-label="Dia seguinte"
+                onClick={() => navegarDiaSelecionado(1)}
+              >
+                â€º
+              </button>
+            </div>
+          )}
+
           {dataSelecionada || dataInicioPeriodo ? (
             (dataSelecionada
               ? tarefasDaDataSelecionada
               : tarefasDoPeriodoSelecionado
             ).length ? (
               <>
-                {gruposWhatsappFiltroData.length > 0 && (
+                {linkWhatsappFiltroData && (
                   <div className="date-whatsapp-panel">
-                    {gruposWhatsappFiltroData.map((grupo) => {
-                      const telefoneFuncionario = limparTelefone(
-                        grupo.funcionario.telefone,
-                      );
-                      const linkWhatsapp = telefoneFuncionario
-                        ? `https://wa.me/${telefoneFuncionario}?text=${encodeURIComponent(
-                            montarMensagemWhatsappPeriodo(
-                              grupo.funcionario,
-                              grupo.tarefas,
-                              tituloPeriodoWhatsapp,
-                            ),
-                          )}`
-                        : "";
-
-                      return (
-                        <div
-                          className="whatsapp-task-box compact"
-                          key={grupo.funcionario.id}
-                        >
-                          <div>
-                            <strong>{grupo.funcionario.nome}</strong>
-                            <p>
-                              {grupo.tarefas.length} tarefa(s){" "}
-                              {tituloPeriodoWhatsapp}.
-                            </p>
-                          </div>
-                          {linkWhatsapp ? (
-                            <a
-                              href={linkWhatsapp}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              Enviar no WhatsApp
-                            </a>
-                          ) : (
-                            <button type="button" disabled>
-                              Sem telefone
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
+                    <div className="whatsapp-task-box compact">
+                      <div>
+                        <strong>Lista de tarefas</strong>
+                        <p>
+                          {tarefasFiltroDataVisiveis.length} tarefa(s){" "}
+                          {tituloPeriodoWhatsapp}.
+                        </p>
+                      </div>
+                      <a
+                        href={linkWhatsappFiltroData}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Enviar no WhatsApp
+                      </a>
+                    </div>
                   </div>
                 )}
 
@@ -887,25 +934,14 @@ function Tarefas({
           )}
 
           {gruposPrestadoresVisiveis.map((grupo) => {
-            const telefoneFuncionario = limparTelefone(
-              grupo.funcionario?.telefone,
-            );
             const tarefasAmanhaFuncionario = grupo.funcionario
               ? grupo.tarefas.filter(
                   (tarefa) => obterDataCheckout(tarefa) === dataAmanha,
                 )
               : [];
             const linkWhatsapp =
-              grupo.funcionario &&
-              telefoneFuncionario &&
-              tarefasAmanhaFuncionario.length
-                ? `https://wa.me/${telefoneFuncionario}?text=${encodeURIComponent(
-                    montarMensagemWhatsapp(
-                      grupo.funcionario,
-                      tarefasAmanhaFuncionario,
-                      dataAmanha,
-                    ),
-                  )}`
+              grupo.funcionario && tarefasAmanhaFuncionario.length
+                ? montarLinkWhatsapp(tarefasAmanhaFuncionario)
                 : "";
 
             return (
