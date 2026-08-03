@@ -935,6 +935,11 @@
   color: #9a3412;
 }
 
+.calendar-month-day strong.completed {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
 .calendar-more-button {
   cursor: pointer;
   background: #f1f5f9;

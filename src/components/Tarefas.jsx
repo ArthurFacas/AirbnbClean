@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useState } from "react";
 import TarefaCard from "./TarefaCard";
 import { criarDataCheckout } from "../utils/tarefas";
@@ -15,7 +16,7 @@ function formatarDataCompleta(data) {
     : dataFormatada.toLocaleDateString("pt-BR");
 }
 
-function obterDataCheckout(tarefa) {
+export function obterDataCheckout(tarefa) {
   const valor =
     tarefa.checkout ??
     tarefa.dataCheckout ??
@@ -102,11 +103,21 @@ function alterarDiaInput(dataInput, deslocamento) {
   return formatarDataInput(dataBase);
 }
 
-function obterDataLimiteCalendario(dataHoje) {
+export function obterDataLimiteCalendario(dataHoje) {
   const limite = new Date(`${dataHoje}T00:00:00`);
   limite.setDate(limite.getDate() - 30);
 
   return formatarDataInput(limite);
+}
+
+export function tarefaConcluidaDentroDoPeriodoCalendario(tarefa, dataLimite) {
+  if (tarefa.status !== "Concluida") {
+    return false;
+  }
+
+  const dataConclusao = obterDataConclusao(tarefa);
+
+  return Boolean(dataConclusao) && dataConclusao >= dataLimite;
 }
 
 function obterMesInput(data) {
@@ -201,7 +212,7 @@ function compararTarefasPorCheckout(tarefaA, tarefaB) {
   );
 }
 
-function obterRotuloTarefaCalendario(tarefa) {
+export function obterRotuloTarefaCalendario(tarefa) {
   const predio = String(tarefa.predioApartamento || "").trim();
   const apartamento = String(tarefa.apartamento || "").trim();
 
@@ -221,7 +232,7 @@ function normalizarBusca(valor) {
     .replace(/[^a-z0-9]/g, "");
 }
 
-function tarefaCombinaComBusca(tarefa, busca) {
+export function tarefaCombinaComBusca(tarefa, busca) {
   const termo = normalizarBusca(busca);
 
   if (!termo) {
@@ -241,24 +252,44 @@ function tarefaCombinaComBusca(tarefa, busca) {
   return camposBusca.some((campo) => normalizarBusca(campo).includes(termo));
 }
 
-function obterComentarioWhatsapp(tarefa) {
-  return (
-    String(tarefa.observacaoPrestador || tarefa.comentarios || tarefa.descricao || "")
-      .trim() || "Sem observacoes"
-  );
+export function obterComentarioWhatsapp(tarefa) {
+  const comentario = String(
+    tarefa.observacaoPrestador || tarefa.comentarios || tarefa.descricao || "",
+  ).trim();
+  const comentarioNormalizado = comentario
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+  const comentariosTecnicosIcal = new Set([
+    "reserved",
+    "reservation",
+    "blocked",
+    "unavailable",
+  ]);
+
+  if (!comentario || comentariosTecnicosIcal.has(comentarioNormalizado)) {
+    return "";
+  }
+
+  return comentario;
 }
 
-function montarMensagemWhatsappTarefas(tarefasSelecionadas) {
+export function montarMensagemWhatsappTarefas(tarefasSelecionadas) {
   return [
-    "🧹 *LISTA DE TAREFAS - LIMPEZA*",
+    "*LISTA DE TAREFAS - LIMPEZA*",
     "",
     tarefasSelecionadas.length
       ? tarefasSelecionadas
           .map((tarefa, index) => {
             const linhas = [
               `${index + 1}. *${obterRotuloTarefaCalendario(tarefa)}*`,
-              `📅 Data: ${formatarDataCompleta(obterDataCheckout(tarefa))}`,
+              ` Data: ${formatarDataCompleta(obterDataCheckout(tarefa))}`,
             ];
+            const quantidadeHospedes = String(
+              tarefa.hospedes || tarefa.quantidadeHospedes || "",
+            ).trim();
+            const comentario = obterComentarioWhatsapp(tarefa);
 
             if (tarefa.prioridade) {
               linhas.push(
@@ -266,7 +297,13 @@ function montarMensagemWhatsappTarefas(tarefasSelecionadas) {
               );
             }
 
-            linhas.push(`📝 Comentários: ${obterComentarioWhatsapp(tarefa)}`);
+            if (quantidadeHospedes) {
+              linhas.push(` Quantidade hóspedes: ${quantidadeHospedes}`);
+            }
+
+            if (comentario) {
+              linhas.push(` Comentários: ${comentario}`);
+            }
 
             return linhas.join("\n");
           })
@@ -287,12 +324,34 @@ function encontrarFuncionario(funcionarios, funcionarioId) {
   );
 }
 
+export function obterTarefasCalendario(tarefas, dataHoje, buscaApartamento = "") {
+  const dataLimiteCalendario = obterDataLimiteCalendario(dataHoje);
+
+  return tarefas
+    .filter((tarefa) => {
+      const dataCheckout = obterDataCheckout(tarefa);
+      const pendenteNoCalendario =
+        tarefa.status === "Pendente" &&
+        (!dataCheckout || dataCheckout >= dataLimiteCalendario);
+      const concluidaRecente =
+        tarefaConcluidaDentroDoPeriodoCalendario(
+          tarefa,
+          dataLimiteCalendario,
+        );
+
+      return pendenteNoCalendario || concluidaRecente;
+    })
+    .filter((tarefa) => tarefaCombinaComBusca(tarefa, buscaApartamento))
+    .sort(compararTarefasPorCheckout);
+}
+
 function Tarefas({
   tarefas,
   funcionarios,
   onAtribuirFuncionario,
   onAtualizarDados,
   onAtualizarTarefa,
+  sincronizandoIcal,
 }) {
   const [visualizacao, setVisualizacao] = useState("calendario");
   const [prestadorSelecionado, setPrestadorSelecionado] = useState("");
@@ -332,18 +391,11 @@ function Tarefas({
     )
     .filter((tarefa) => tarefaCombinaComBusca(tarefa, buscaApartamento))
     .sort(compararTarefasPorCheckout);
-  const dataLimiteCalendario = obterDataLimiteCalendario(dataHoje);
-  const tarefasPendentesCalendario = tarefas
-    .filter((tarefa) => {
-      const dataCheckout = obterDataCheckout(tarefa);
-
-      return (
-        tarefa.status === "Pendente" &&
-        (!dataCheckout || dataCheckout >= dataLimiteCalendario)
-      );
-    })
-    .filter((tarefa) => tarefaCombinaComBusca(tarefa, buscaApartamento))
-    .sort(compararTarefasPorCheckout);
+  const tarefasCalendario = obterTarefasCalendario(
+    tarefas,
+    dataHoje,
+    buscaApartamento,
+  );
   const tarefasConcluidas = tarefas
     .filter((tarefa) => tarefa.status === "Concluida")
     .sort(compararTarefasPorCheckout);
@@ -358,18 +410,18 @@ function Tarefas({
   ).length;
   const diasDoCalendario = montarDiasDoMes(
     mesCalendario,
-    tarefasPendentesCalendario,
+    tarefasCalendario,
   );
   const diasDoFiltroData = montarDiasDoMes(
     mesFiltroData,
-    tarefasPendentesCalendario,
+    tarefasPendentes,
   );
   const tarefasDaDataSelecionada = dataSelecionada
-    ? tarefasPendentesCalendario.filter(
+    ? (dataAbertaPeloCalendario ? tarefasCalendario : tarefasPendentes).filter(
         (tarefa) => obterDataCheckout(tarefa) === dataSelecionada,
       )
     : [];
-  const tarefasDoPeriodoSelecionado = tarefasPendentesCalendario.filter((tarefa) => {
+  const tarefasDoPeriodoSelecionado = tarefasPendentes.filter((tarefa) => {
     const dataCheckout = obterDataCheckout(tarefa);
 
     if (!dataCheckout) {
@@ -400,7 +452,7 @@ function Tarefas({
       )
     : [];
   const tarefasFiltroDataVisiveis = dataSelecionada
-    ? tarefasDaDataSelecionada
+    ? tarefasDaDataSelecionada.filter((tarefa) => tarefa.status === "Pendente")
     : tarefasDoPeriodoSelecionado;
   const tituloPeriodoWhatsapp = dataSelecionada
     ? `de ${formatarDataCompleta(dataSelecionada)}`
@@ -518,7 +570,7 @@ function Tarefas({
   }
 
   async function atualizarDadosComBloqueio() {
-    if (atualizandoDados) {
+    if (atualizandoDados || sincronizandoIcal) {
       return;
     }
 
@@ -599,14 +651,14 @@ function Tarefas({
           <button
             className="task-refresh-button"
             type="button"
-            disabled={atualizandoDados}
+            disabled={atualizandoDados || sincronizandoIcal}
             onClick={() => {
               atualizarDadosComBloqueio().catch((erro) => {
                 window.alert(erro.message || "Nao foi possivel atualizar.");
               });
             }}
           >
-            {atualizandoDados ? "Atualizando..." : "Atualizar"}
+            {atualizandoDados || sincronizandoIcal ? "Atualizando..." : "Atualizar"}
           </button>
         </div>
       </div>
@@ -682,10 +734,19 @@ function Tarefas({
                     ).map((tarefa) => (
                       <strong
                         key={tarefa.id}
-                        className={tarefa.prioridade ? "priority" : ""}
+                        className={[
+                          tarefa.status === "Concluida" ? "completed" : "",
+                          tarefa.status !== "Concluida" && tarefa.prioridade
+                            ? "priority"
+                            : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
                         title={obterRotuloTarefaCalendario(tarefa)}
                       >
-                        {obterRotuloTarefaCalendario(tarefa)}
+                        {tarefa.status === "Concluida"
+                          ? `Concluida - ${obterRotuloTarefaCalendario(tarefa)}`
+                          : obterRotuloTarefaCalendario(tarefa)}
                       </strong>
                     ))}
                     {dia.tarefas.length > 3 && (
@@ -868,16 +929,37 @@ function Tarefas({
                   {(dataSelecionada
                     ? tarefasDaDataSelecionada
                     : tarefasDoPeriodoSelecionado
-                  ).map((tarefa) => (
-                    <TarefaCard
-                      key={tarefa.id}
-                      funcionarios={funcionariosResponsaveis}
-                      onAtribuirFuncionario={onAtribuirFuncionario}
-                      onAtualizarTarefa={onAtualizarTarefa}
-                      selectId={`data-funcionario-${tarefa.id}`}
-                      tarefa={tarefa}
-                    />
-                  ))}
+                  ).map((tarefa) =>
+                    tarefa.status === "Concluida" ? (
+                      <div
+                        className="info-card task-card completed"
+                        key={tarefa.id}
+                      >
+                        <div className="task-card-main">
+                          <span className="task-apartment-label">
+                            Concluida
+                          </span>
+                          <h3>{obterRotuloTarefaCalendario(tarefa)}</h3>
+                          <p>{tarefa.descricao}</p>
+                        </div>
+                        <div className="provider-task-done-by">
+                          <span>Concluida em</span>
+                          <strong>
+                            {formatarDataCompleta(obterDataConclusao(tarefa))}
+                          </strong>
+                        </div>
+                      </div>
+                    ) : (
+                      <TarefaCard
+                        key={tarefa.id}
+                        funcionarios={funcionariosResponsaveis}
+                        onAtribuirFuncionario={onAtribuirFuncionario}
+                        onAtualizarTarefa={onAtualizarTarefa}
+                        selectId={`data-funcionario-${tarefa.id}`}
+                        tarefa={tarefa}
+                      />
+                    ),
+                  )}
                 </div>
               </>
             ) : (

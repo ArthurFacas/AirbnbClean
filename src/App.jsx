@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+/* eslint-disable react-refresh/only-export-components */
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, Routes, Route } from "react-router-dom";
 
 import Login from "./components/login";
@@ -82,7 +83,7 @@ function atribuirTarefasPorPrestador(tarefasAtuais, funcionariosAtuais) {
   );
 }
 
-function obterChaveReserva(reserva) {
+export function obterChaveReserva(reserva) {
   if (reserva.uid) {
     return `uid:${String(reserva.uid).trim()}`;
   }
@@ -102,12 +103,23 @@ function obterDataReserva(valor) {
   return String(valor).slice(0, 10);
 }
 
-function tarefaCorrespondeReserva(tarefa, reserva) {
+export function tarefaCorrespondeReserva(tarefa, reserva) {
   const chaveReserva = obterChaveReserva(reserva);
   const chaveTarefa = tarefa.icalKey || tarefa.chaveReserva;
 
+  if (String(tarefa.origem || "") !== "Airbnb iCal") {
+    return false;
+  }
+
+  if (reserva.uid) {
+    return Boolean(chaveTarefa) && chaveTarefa === chaveReserva;
+  }
+
   return (
-    (chaveTarefa && chaveTarefa === chaveReserva) ||
+    Boolean(chaveTarefa) && chaveTarefa === chaveReserva
+  ) || (
+    !chaveTarefa &&
+    obterDataReserva(tarefa.checkin) === obterDataReserva(reserva.checkin) &&
     obterDataReserva(tarefa.checkout) === obterDataReserva(reserva.checkout)
   );
 }
@@ -173,6 +185,132 @@ function enriquecerTarefasComApartamento(tarefasAtuais, apartamentosAtuais) {
   });
 }
 
+export function montarTarefasIcal(
+  apartamento,
+  apartamentoId,
+  reservas,
+  reservasBase = reservas,
+  tarefasExistentes = [],
+  funcionariosBase = [],
+) {
+  const dataMinima = obterHojeInput();
+  const datasCheckin = new Set(
+    reservasBase
+      .map((reserva) => obterDataReserva(reserva.checkin))
+      .filter(Boolean),
+  );
+
+  return reservas
+    .filter((reserva) => {
+      const dataCheckout = obterDataReserva(reserva.checkout);
+
+      return dataCheckout && dataCheckout >= dataMinima;
+    })
+    .map((reserva, index) => {
+      const dataCheckout = obterDataReserva(reserva.checkout);
+      const temCheckinNoMesmoDia = datasCheckin.has(dataCheckout);
+      const chaveReserva = obterChaveReserva(reserva);
+      const tarefaExistente = tarefasExistentes.find((tarefa) =>
+        tarefaCorrespondeReserva(tarefa, reserva),
+      );
+      let tarefaId = tarefaExistente?.id || apartamentoId * 1000 + index + 1;
+
+      while (
+        !tarefaExistente &&
+        tarefasExistentes.some(
+          (tarefa) => String(tarefa.id) === String(tarefaId),
+        )
+      ) {
+        tarefaId += 1000;
+      }
+
+      return {
+        id: tarefaId,
+        apartamento: apartamento.numero,
+        bairroApartamento: apartamento.Bairro || "",
+        enderecoApartamento: montarEnderecoApartamento(apartamento),
+        predioApartamento:
+          apartamento["nome.do.predio"] || apartamento.predio || "",
+        descricao: reserva.resumo || "Limpeza apos checkout Airbnb",
+        checkin: obterDataReserva(reserva.checkin),
+        checkout: dataCheckout,
+        horaCheckout: apartamento.horaCheckout || "11:00",
+        status: tarefaExistente?.status || "Pendente",
+        funcionarioId:
+          tarefaExistente?.funcionarioId ||
+          escolherPrestadorParaTarefa(
+            { bairroApartamento: apartamento.Bairro || "" },
+            funcionariosBase,
+          ),
+        origem: "Airbnb iCal",
+        apartamentoId,
+        icalKey: chaveReserva,
+        prioridade: temCheckinNoMesmoDia,
+        motivoPrioridade: temCheckinNoMesmoDia
+          ? "Checkout e check-in no mesmo dia"
+          : "",
+        observacaoPrestador:
+          tarefaExistente?.observacaoPrestador ||
+          apartamento.observacaoEndereco ||
+          "",
+        hospedes:
+          reserva.hospedes ||
+          reserva.quantidadeHospedes ||
+          tarefaExistente?.hospedes ||
+          tarefaExistente?.quantidadeHospedes ||
+          apartamento.hospedesMaximos ||
+          "",
+        senhaPorta: tarefaExistente?.senhaPorta || apartamento.senhaPorta || "",
+        concluidaEm: tarefaExistente?.concluidaEm || "",
+      };
+    });
+}
+
+export function mesclarTarefasIcalApartamento(
+  tarefasAtuais,
+  apartamentoId,
+  reservas,
+  tarefasRecriadas,
+  dataMinima = obterHojeInput(),
+) {
+  const idsRecriados = new Set(
+    tarefasRecriadas.map((tarefa) => String(tarefa.id)),
+  );
+
+  return [
+    ...tarefasAtuais.filter((tarefa) => {
+      if (String(tarefa.apartamentoId) !== String(apartamentoId)) {
+        return true;
+      }
+
+      if (idsRecriados.has(String(tarefa.id))) {
+        return false;
+      }
+
+      if (tarefa.status === "Concluida") {
+        return true;
+      }
+
+      const dataCheckoutTarefa = obterDataReserva(tarefa.checkout);
+
+      if (dataCheckoutTarefa && dataCheckoutTarefa < dataMinima) {
+        return false;
+      }
+
+      const aindaExiste = reservas.some((reserva) =>
+        tarefaCorrespondeReserva(tarefa, reserva),
+      );
+
+      return aindaExiste;
+    }),
+    ...tarefasRecriadas,
+  ].sort((tarefaA, tarefaB) =>
+    String(tarefaA.checkout || "").localeCompare(
+      String(tarefaB.checkout || ""),
+    ),
+  );
+}
+
 function App() {
   const [usuarioLogado, setUsuarioLogado] = useState(() => {
     try {
@@ -187,6 +325,9 @@ function App() {
   const [tarefas, setTarefas] = useState([]);
   const [bancoCarregado, setBancoCarregado] = useState(false);
   const [usuarioEstadoCarregadoId, setUsuarioEstadoCarregadoId] = useState("");
+  const [sincronizandoIcal, setSincronizandoIcal] = useState(false);
+  const sincronizacaoIcalEmAndamentoRef = useRef(false);
+  const atualizarDadosRef = useRef(null);
 
   const carregarEstadoUsuario = useCallback(async function carregarEstadoUsuario(
     usuario,
@@ -469,85 +610,6 @@ function App() {
     }
   }
 
-  function montarTarefasIcal(
-    apartamento,
-    apartamentoId,
-    reservas,
-    reservasBase = reservas,
-    tarefasExistentes = [],
-    funcionariosBase = funcionarios,
-  ) {
-    const dataMinima = obterHojeInput();
-    const datasCheckin = new Set(
-      reservasBase
-        .map((reserva) => obterDataReserva(reserva.checkin))
-        .filter(Boolean),
-    );
-
-    return reservas
-      .filter((reserva) => {
-        const dataCheckout = obterDataReserva(reserva.checkout);
-
-        return dataCheckout && dataCheckout >= dataMinima;
-      })
-      .map((reserva, index) => {
-        const dataCheckout = obterDataReserva(reserva.checkout);
-        const temCheckinNoMesmoDia = datasCheckin.has(dataCheckout);
-        const chaveReserva = obterChaveReserva(reserva);
-        const tarefaExistente = tarefasExistentes.find((tarefa) =>
-          tarefaCorrespondeReserva(tarefa, reserva),
-        );
-        let tarefaId = tarefaExistente?.id || apartamentoId * 1000 + index + 1;
-
-        while (
-          !tarefaExistente &&
-          tarefasExistentes.some(
-            (tarefa) => String(tarefa.id) === String(tarefaId),
-          )
-        ) {
-          tarefaId += 1000;
-        }
-
-        return {
-          id: tarefaId,
-          apartamento: apartamento.numero,
-          bairroApartamento: apartamento.Bairro || "",
-          enderecoApartamento: montarEnderecoApartamento(apartamento),
-          predioApartamento:
-            apartamento["nome.do.predio"] || apartamento.predio || "",
-          descricao: reserva.resumo || "Limpeza apos checkout Airbnb",
-          checkin: obterDataReserva(reserva.checkin),
-          checkout: dataCheckout,
-          horaCheckout: apartamento.horaCheckout || "11:00",
-          status: tarefaExistente?.status || "Pendente",
-          funcionarioId:
-            tarefaExistente?.funcionarioId ||
-            escolherPrestadorParaTarefa(
-              { bairroApartamento: apartamento.Bairro || "" },
-              funcionariosBase,
-            ),
-          origem: "Airbnb iCal",
-          apartamentoId,
-          icalKey: chaveReserva,
-          prioridade: temCheckinNoMesmoDia,
-          motivoPrioridade: temCheckinNoMesmoDia
-            ? "Checkout e check-in no mesmo dia"
-            : "",
-          observacaoPrestador:
-            tarefaExistente?.observacaoPrestador ||
-            apartamento.observacaoEndereco ||
-            "",
-          hospedes:
-            tarefaExistente?.hospedes ||
-            tarefaExistente?.quantidadeHospedes ||
-            apartamento.hospedesMaximos ||
-            "",
-          senhaPorta: tarefaExistente?.senhaPorta || apartamento.senhaPorta || "",
-          concluidaEm: tarefaExistente?.concluidaEm || "",
-        };
-      });
-  }
-
   async function sincronizarApartamentosIcal(estadoBase) {
     const apartamentosComIcal = estadoBase.apartamentos.filter(
       (apartamento) => apartamento.ICALL || apartamento.ical,
@@ -585,40 +647,16 @@ function App() {
         tarefasDoApartamento,
         estadoBase.funcionarios,
       );
-      const idsRecriados = new Set(
-        tarefasRecriadas.map((tarefa) => String(tarefa.id)),
-      );
 
       apartamentosAtualizados = apartamentosAtualizados.map((item) =>
         String(item.id) === String(apartamento.id) ? apartamentoAtualizado : item,
       );
-      tarefasAtualizadas = [
-        ...tarefasAtualizadas.filter((tarefa) => {
-          if (String(tarefa.apartamentoId) !== String(apartamento.id)) {
-            return true;
-          }
-
-          if (tarefa.status === "Concluida") {
-            return true;
-          }
-
-          const dataCheckoutTarefa = obterDataReserva(tarefa.checkout);
-
-          if (dataCheckoutTarefa && dataCheckoutTarefa < dataMinima) {
-            return false;
-          }
-
-          const aindaExiste = reservas.some((reserva) =>
-            tarefaCorrespondeReserva(tarefa, reserva),
-          );
-
-          return aindaExiste && !idsRecriados.has(String(tarefa.id));
-        }),
-        ...tarefasRecriadas,
-      ].sort((tarefaA, tarefaB) =>
-        String(tarefaA.checkout || "").localeCompare(
-          String(tarefaB.checkout || ""),
-        ),
+      tarefasAtualizadas = mesclarTarefasIcalApartamento(
+        tarefasAtualizadas,
+        apartamento.id,
+        reservas,
+        tarefasRecriadas,
+        dataMinima,
       );
     }
 
@@ -842,43 +880,97 @@ function App() {
       return;
     }
 
-    const resposta = await fetch(
-      `/api/state?ownerId=${encodeURIComponent(
-        obterOwnerIdUsuario(usuarioLogado),
-      )}`,
-      {
-        headers: obterCabecalhosAutenticados(usuarioLogado),
-      },
-    );
-
-    if (!resposta.ok) {
-      throw new Error("Nao foi possivel carregar o banco.");
+    if (sincronizacaoIcalEmAndamentoRef.current) {
+      return;
     }
 
-    const estadoBanco = await resposta.json();
-    const estadoSincronizado = await sincronizarApartamentosIcal({
-      funcionarios: Array.isArray(estadoBanco.funcionarios)
-        ? estadoBanco.funcionarios
-        : [],
-      apartamentos: Array.isArray(estadoBanco.apartamentos)
-        ? estadoBanco.apartamentos
-        : [],
-      tarefas: Array.isArray(estadoBanco.tarefas) ? estadoBanco.tarefas : [],
-    });
-    const estadoFinal = {
-      ...estadoSincronizado,
-      tarefas: enriquecerTarefasComApartamento(
-        estadoSincronizado.tarefas,
-        estadoSincronizado.apartamentos,
-      ),
+    sincronizacaoIcalEmAndamentoRef.current = true;
+    setSincronizandoIcal(true);
+
+    try {
+      const resposta = await fetch(
+        `/api/state?ownerId=${encodeURIComponent(
+          obterOwnerIdUsuario(usuarioLogado),
+        )}`,
+        {
+          headers: obterCabecalhosAutenticados(usuarioLogado),
+        },
+      );
+
+      if (!resposta.ok) {
+        throw new Error("Nao foi possivel carregar o banco.");
+      }
+
+      const estadoBanco = await resposta.json();
+      const estadoSincronizado = await sincronizarApartamentosIcal({
+        funcionarios: Array.isArray(estadoBanco.funcionarios)
+          ? estadoBanco.funcionarios
+          : [],
+        apartamentos: Array.isArray(estadoBanco.apartamentos)
+          ? estadoBanco.apartamentos
+          : [],
+        tarefas: Array.isArray(estadoBanco.tarefas) ? estadoBanco.tarefas : [],
+      });
+      const estadoFinal = {
+        ...estadoSincronizado,
+        tarefas: enriquecerTarefasComApartamento(
+          estadoSincronizado.tarefas,
+          estadoSincronizado.apartamentos,
+        ),
+      };
+
+      setFuncionarios(estadoFinal.funcionarios);
+      setApartamentos(estadoFinal.apartamentos);
+      setTarefas(estadoFinal.tarefas);
+
+      await salvarEstadoAtualizado(estadoFinal);
+    } finally {
+      sincronizacaoIcalEmAndamentoRef.current = false;
+      setSincronizandoIcal(false);
+    }
+  }
+
+  useEffect(() => {
+    atualizarDadosRef.current = atualizarDados;
+  });
+
+  useEffect(() => {
+    const estadoCarregadoParaUsuario =
+      bancoCarregado &&
+      usuarioLogado?.id &&
+      usuarioEstadoCarregadoId === String(usuarioLogado.id);
+
+    if (!estadoCarregadoParaUsuario) {
+      return undefined;
+    }
+
+    let cancelado = false;
+    const sincronizarAutomaticamente = () => {
+      if (cancelado || document.visibilityState !== "visible") {
+        return;
+      }
+
+      atualizarDadosRef.current?.().catch(() => {});
+    };
+    const sincronizarAoVoltarParaAba = () => {
+      if (document.visibilityState === "visible") {
+        sincronizarAutomaticamente();
+      }
     };
 
-    setFuncionarios(estadoFinal.funcionarios);
-    setApartamentos(estadoFinal.apartamentos);
-    setTarefas(estadoFinal.tarefas);
+    sincronizarAutomaticamente();
+    document.addEventListener("visibilitychange", sincronizarAoVoltarParaAba);
+    window.addEventListener("focus", sincronizarAutomaticamente);
 
-    await salvarEstadoAtualizado(estadoFinal);
-  }
+    return () => {
+      cancelado = true;
+      document.removeEventListener(
+        "visibilitychange",
+        sincronizarAoVoltarParaAba,
+      );
+      window.removeEventListener("focus", sincronizarAutomaticamente);
+    };
+  }, [bancoCarregado, usuarioEstadoCarregadoId, usuarioLogado?.id]);
 
   return (
     <Routes>
@@ -934,6 +1026,7 @@ function App() {
               onAtribuirFuncionario={atribuirFuncionarioTarefa}
               onAtualizarDados={atualizarDados}
               onAtualizarTarefa={atualizarTarefa}
+              sincronizandoIcal={sincronizandoIcal}
               tarefasPendentes={tarefasPendentes}
             />
           ) : (
@@ -1006,6 +1099,7 @@ function App() {
                 onAtribuirFuncionario={atribuirFuncionarioTarefa}
                 onAtualizarDados={atualizarDados}
                 onAtualizarTarefa={atualizarTarefa}
+                sincronizandoIcal={sincronizandoIcal}
                 tarefas={tarefas}
               />
             ) : (

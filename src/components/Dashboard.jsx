@@ -45,6 +45,7 @@ function DashboardHome({
   onAtribuirFuncionario,
   onAtualizarDados,
   onAtualizarTarefa,
+  sincronizandoIcal,
   tarefasPendentes,
 }) {
   const navigate = useNavigate();
@@ -113,8 +114,12 @@ function DashboardHome({
             <h2>Tarefas pendentes</h2>
           </div>
           <div>
-            <button type="button" onClick={onAtualizarDados}>
-              Atualizar
+            <button
+              type="button"
+              disabled={sincronizandoIcal}
+              onClick={onAtualizarDados}
+            >
+              {sincronizandoIcal ? "Atualizando..." : "Atualizar"}
             </button>
             <button
               type="button"
@@ -156,6 +161,7 @@ function Dashboard({
   onAtribuirFuncionario,
   onAtualizarDados,
   onAtualizarTarefa,
+  sincronizandoIcal,
   tarefasPendentes,
 }) {
   const location = useLocation();
@@ -266,6 +272,7 @@ function Dashboard({
             onAtribuirFuncionario={onAtribuirFuncionario}
             onAtualizarDados={onAtualizarDados}
             onAtualizarTarefa={onAtualizarTarefa}
+            sincronizandoIcal={sincronizandoIcal}
             tarefasPendentes={tarefasPendentes}
           />
         ) : (

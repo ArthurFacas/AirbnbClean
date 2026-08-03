@@ -75,6 +75,25 @@ function normalizarTextoComparacao(valor) {
     .toLowerCase();
 }
 
+function extrairQuantidadeHospedes(valor) {
+  const texto = String(valor || "").replace(/\\n/g, "\n");
+  const padroes = [
+    /(?:quantidade\s+(?:de\s+)?)?h[oó]spedes?\s*[:=-]\s*(\d+)/i,
+    /guests?\s*[:=-]\s*(\d+)/i,
+    /(\d+)\s*(?:h[oó]spedes?|guests?)/i,
+  ];
+
+  for (const padrao of padroes) {
+    const resultado = texto.match(padrao);
+
+    if (resultado?.[1]) {
+      return resultado[1];
+    }
+  }
+
+  return "";
+}
+
 function desdobrarLinhasIcal(texto) {
   return texto
     .replace(/\r\n/g, "\n")
@@ -127,10 +146,12 @@ function definirPropriedadeEvento(evento, linha) {
 
   if (propriedade === "SUMMARY") {
     evento.resumo = valor;
+    evento.hospedes = evento.hospedes || extrairQuantidadeHospedes(valor);
   }
 
   if (propriedade === "DESCRIPTION") {
     evento.descricao = valor;
+    evento.hospedes = evento.hospedes || extrairQuantidadeHospedes(valor);
   }
 
   if (propriedade === "UID") {
