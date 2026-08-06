@@ -115,9 +115,9 @@ export function tarefaConcluidaDentroDoPeriodoCalendario(tarefa, dataLimite) {
     return false;
   }
 
-  const dataConclusao = obterDataConclusao(tarefa);
+  const dataCheckout = obterDataCheckout(tarefa);
 
-  return Boolean(dataConclusao) && dataConclusao >= dataLimite;
+  return Boolean(dataCheckout) && dataCheckout >= dataLimite;
 }
 
 function obterMesInput(data) {

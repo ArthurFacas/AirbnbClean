@@ -163,6 +163,85 @@ test("calendario inclui concluidas recentes, marca visualmente e nao as trata co
   assert.match(html, /Concluida - Zyz Centro - 706/);
 });
 
+test("calendario mantem tarefas antigas na data real de checkout sem duplicar ou mover para hoje", () => {
+  const tarefas = [
+    {
+      id: 1,
+      status: "Pendente",
+      checkout: "2026-08-05",
+      apartamento: "101",
+      predioApartamento: "Clean Host",
+    },
+    {
+      id: 2,
+      status: "Concluida",
+      checkout: "2026-08-05",
+      concluidaEm: "2026-08-06T09:00:00.000Z",
+      apartamento: "102",
+      predioApartamento: "Clean Host",
+    },
+    {
+      id: 3,
+      status: "Pendente",
+      checkout: "2026-07-17",
+      apartamento: "103",
+      predioApartamento: "Clean Host",
+    },
+    {
+      id: 4,
+      status: "Pendente",
+      checkout: "2026-07-06",
+      apartamento: "104",
+      predioApartamento: "Clean Host",
+    },
+    {
+      id: 5,
+      status: "Pendente",
+      checkout: "2026-08-06",
+      apartamento: "105",
+      predioApartamento: "Clean Host",
+    },
+    {
+      id: 6,
+      status: "Pendente",
+      checkout: "2026-08-12",
+      apartamento: "106",
+      predioApartamento: "Clean Host",
+    },
+  ];
+  const calendario = tarefasModule.obterTarefasCalendario(tarefas, "2026-08-06");
+  const idsCalendario = calendario.map((tarefa) => tarefa.id);
+  const tarefasOntem = calendario.filter(
+    (tarefa) => tarefasModule.obterDataCheckout(tarefa) === "2026-08-05",
+  );
+  const tarefasHoje = calendario.filter(
+    (tarefa) => tarefasModule.obterDataCheckout(tarefa) === "2026-08-06",
+  );
+  const html = renderToStaticMarkup(
+    React.createElement(tarefasModule.default, {
+      tarefas,
+      funcionarios: [],
+      onAtribuirFuncionario: () => {},
+      onAtualizarDados: () => Promise.resolve(),
+      onAtualizarTarefa: () => {},
+      sincronizandoIcal: false,
+    }),
+  );
+
+  assert.deepEqual(idsCalendario, [3, 1, 2, 5, 6]);
+  assert.equal(new Set(idsCalendario).size, idsCalendario.length);
+  assert.ok(tarefasOntem.some((tarefa) => tarefa.id === 1));
+  assert.ok(tarefasOntem.some((tarefa) => tarefa.id === 2));
+  assert.ok(tarefasHoje.every((tarefa) => tarefa.id !== 1));
+  assert.ok(tarefasHoje.every((tarefa) => tarefa.id !== 2));
+  assert.ok(calendario.some((tarefa) => tarefa.id === 3));
+  assert.ok(calendario.every((tarefa) => tarefa.id !== 4));
+  assert.equal(calendario.find((tarefa) => tarefa.id === 1)?.checkout, "2026-08-05");
+  assert.match(html, /Clean Host - 101/);
+  assert.match(html, /class="completed"/);
+  assert.match(html, /Concluida - Clean Host - 102/);
+});
+
 test("calendario inclui concluida ha 30 dias e exclui concluida ha 31 dias", () => {
   const tarefas = [
     {
