@@ -18,6 +18,9 @@ import {
 import { buscarReservasIcal } from "./utils/ical";
 import { salvarApartamentoComSincronizacaoIcal } from "./utils/apartamentos";
 
+const INTERVALO_SINCRONIZACAO_AUTOMATICA_MS = 15 * 60 * 1000;
+const CAMPOS_EDITAVEIS = "input, textarea, select, [contenteditable='true']";
+
 function normalizarTelefoneWhatsapp(telefone) {
   const somenteNumeros = String(telefone || "").replace(/\D/g, "");
 
@@ -143,6 +146,22 @@ function obterCabecalhosAutenticados(usuario, extras = {}) {
     ...extras,
     ...(usuario?.token ? { Authorization: `Bearer ${usuario.token}` } : {}),
   };
+}
+
+function elementoEditavel(elemento) {
+  return Boolean(elemento?.closest?.(CAMPOS_EDITAVEIS));
+}
+
+function textoBotao(elemento) {
+  return String(elemento?.textContent || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function elementoEmFormularioOuModal(elemento) {
+  return Boolean(elemento?.closest?.("form, [role='dialog'], .provider-edit-modal"));
 }
 
 function estadoTemAlgumDado(estado) {
@@ -351,6 +370,9 @@ function App() {
   const [sincronizandoIcal, setSincronizandoIcal] = useState(false);
   const sincronizacaoIcalEmAndamentoRef = useRef(false);
   const atualizarDadosRef = useRef(null);
+  const edicaoLocalPendenteRef = useRef(false);
+  const sincronizacaoAdiadaRef = useRef(false);
+  const intervaloSincronizacaoRef = useRef(null);
 
   const carregarEstadoUsuario = useCallback(async function carregarEstadoUsuario(
     usuario,
@@ -430,6 +452,55 @@ function App() {
 
     carregarBanco();
   }, [carregarEstadoUsuario, usuarioLogado]);
+
+  useEffect(() => {
+    if (!usuarioLogado?.id) {
+      edicaoLocalPendenteRef.current = false;
+      sincronizacaoAdiadaRef.current = false;
+      return undefined;
+    }
+
+    function marcarEdicao(evento) {
+      if (
+        elementoEditavel(evento.target) &&
+        elementoEmFormularioOuModal(evento.target)
+      ) {
+        edicaoLocalPendenteRef.current = true;
+      }
+    }
+
+    function limparEdicao() {
+      edicaoLocalPendenteRef.current = false;
+    }
+
+    function limparEdicaoPorAcao(evento) {
+      const botao = evento.target?.closest?.("button");
+      const texto = textoBotao(botao);
+
+      if (
+        botao?.type === "submit" ||
+        ["salvar", "salvar alteracoes", "cadastrar", "cancelar"].includes(texto)
+      ) {
+        setTimeout(limparEdicao, 0);
+      }
+    }
+
+    document.addEventListener("input", marcarEdicao, true);
+    document.addEventListener("change", marcarEdicao, true);
+    document.addEventListener("submit", limparEdicao, true);
+    document.addEventListener("reset", limparEdicao, true);
+    document.addEventListener("click", limparEdicaoPorAcao, true);
+
+    return () => {
+      document.removeEventListener("input", marcarEdicao, true);
+      document.removeEventListener("change", marcarEdicao, true);
+      document.removeEventListener("submit", limparEdicao, true);
+      document.removeEventListener("reset", limparEdicao, true);
+      document.removeEventListener("click", limparEdicaoPorAcao, true);
+      edicaoLocalPendenteRef.current = false;
+      sincronizacaoAdiadaRef.current = false;
+    };
+  }, [usuarioLogado?.id]);
 
   useEffect(() => {
     if (usuarioLogado) {
@@ -874,8 +945,16 @@ function App() {
     setUsuarioLogado(null);
   }
 
-  async function atualizarDados() {
+  async function atualizarDados({ automatico = false } = {}) {
     if (!usuarioLogado?.id) {
+      return;
+    }
+
+    if (
+      automatico &&
+      (edicaoLocalPendenteRef.current || elementoEditavel(document.activeElement))
+    ) {
+      sincronizacaoAdiadaRef.current = true;
       return;
     }
 
@@ -883,6 +962,7 @@ function App() {
       return;
     }
 
+    sincronizacaoAdiadaRef.current = false;
     sincronizacaoIcalEmAndamentoRef.current = true;
     setSincronizandoIcal(true);
 
@@ -940,34 +1020,37 @@ function App() {
       usuarioEstadoCarregadoId === String(usuarioLogado.id);
 
     if (!estadoCarregadoParaUsuario) {
+      if (intervaloSincronizacaoRef.current) {
+        clearInterval(intervaloSincronizacaoRef.current);
+        intervaloSincronizacaoRef.current = null;
+      }
       return undefined;
     }
 
     let cancelado = false;
     const sincronizarAutomaticamente = () => {
-      if (cancelado || document.visibilityState !== "visible") {
+      if (cancelado) {
         return;
       }
 
-      atualizarDadosRef.current?.().catch(() => {});
-    };
-    const sincronizarAoVoltarParaAba = () => {
-      if (document.visibilityState === "visible") {
-        sincronizarAutomaticamente();
-      }
+      atualizarDadosRef.current?.({ automatico: true }).catch(() => {});
     };
 
     sincronizarAutomaticamente();
-    document.addEventListener("visibilitychange", sincronizarAoVoltarParaAba);
-    window.addEventListener("focus", sincronizarAutomaticamente);
+    if (intervaloSincronizacaoRef.current) {
+      clearInterval(intervaloSincronizacaoRef.current);
+    }
+    intervaloSincronizacaoRef.current = setInterval(
+      sincronizarAutomaticamente,
+      INTERVALO_SINCRONIZACAO_AUTOMATICA_MS,
+    );
 
     return () => {
       cancelado = true;
-      document.removeEventListener(
-        "visibilitychange",
-        sincronizarAoVoltarParaAba,
-      );
-      window.removeEventListener("focus", sincronizarAutomaticamente);
+      if (intervaloSincronizacaoRef.current) {
+        clearInterval(intervaloSincronizacaoRef.current);
+        intervaloSincronizacaoRef.current = null;
+      }
     };
   }, [bancoCarregado, usuarioEstadoCarregadoId, usuarioLogado?.id]);
 

@@ -7,6 +7,47 @@
   overflow-x: hidden;
 }
 
+.sync-status-indicator {
+  align-items: center;
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+  color: #1e3a8a;
+  display: inline-flex;
+  font-size: 0.86rem;
+  font-weight: 700;
+  gap: 0.5rem;
+  line-height: 1;
+  margin-bottom: 0.75rem;
+  padding: 0.55rem 0.8rem;
+  position: sticky;
+  top: 0.75rem;
+  z-index: 20;
+}
+
+.sync-status-indicator span {
+  animation: sync-pulse 0.8s ease-in-out infinite;
+  background: #2563eb;
+  border-radius: 50%;
+  height: 0.55rem;
+  width: 0.55rem;
+}
+
+@keyframes sync-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .permissions-panel {
   display: grid;
   gap: 1rem;

@@ -263,6 +263,12 @@ function Dashboard({
       </aside>
 
       <main className="dashboard-main">
+        {sincronizandoIcal && (
+          <div className="sync-status-indicator" role="status" aria-live="polite">
+            <span aria-hidden="true" />
+            Atualizando dados...
+          </div>
+        )}
         {isDashboardHome ? (
           <DashboardHome
             apartamentoTotal={apartamentoTotal}

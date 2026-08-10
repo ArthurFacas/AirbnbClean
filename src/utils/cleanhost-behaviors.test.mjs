@@ -530,21 +530,30 @@ test("mensagem de WhatsApp aplica hospedes, comentarios reais, comentarios tecni
   );
 });
 
-test("sincronizacao automatica mantem eventos permitidos, bloqueio simultaneo e nao possui intervalo de 5 minutos", async () => {
-  const [appSource, dashboardSource, tarefasSource] = await Promise.all([
+test("sincronizacao automatica usa login e intervalo de 15 minutos sem foco ou troca de aba", async () => {
+  const [appSource, dashboardSource, dashboardCssSource, tarefasSource] = await Promise.all([
     readFile(new URL("../App.jsx", import.meta.url), "utf8"),
     readFile(new URL("../components/Dashboard.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/Dashboard.css", import.meta.url), "utf8"),
     readFile(new URL("../components/Tarefas.jsx", import.meta.url), "utf8"),
   ]);
 
   assert.match(appSource, /sincronizarAutomaticamente\(\);/);
-  assert.match(appSource, /document\.addEventListener\("visibilitychange"/);
-  assert.match(appSource, /window\.addEventListener\("focus"/);
+  assert.match(appSource, /INTERVALO_SINCRONIZACAO_AUTOMATICA_MS = 15 \* 60 \* 1000/);
+  assert.match(appSource, /setInterval\(/);
+  assert.match(appSource, /clearInterval\(/);
+  assert.match(appSource, /intervaloSincronizacaoRef/);
+  assert.match(appSource, /automatico: true/);
   assert.match(appSource, /sincronizacaoIcalEmAndamentoRef\.current/);
+  assert.match(appSource, /edicaoLocalPendenteRef/);
+  assert.match(appSource, /elementoEditavel\(document\.activeElement\)/);
+  assert.doesNotMatch(appSource, /document\.addEventListener\("visibilitychange"/);
+  assert.doesNotMatch(appSource, /window\.addEventListener\("focus"/);
   assert.match(dashboardSource, /onClick=\{onAtualizarDados\}/);
+  assert.match(dashboardSource, /sync-status-indicator/);
+  assert.match(dashboardSource, /Atualizando dados\.\.\./);
+  assert.match(dashboardCssSource, /\.sync-status-indicator/);
+  assert.match(dashboardCssSource, /@keyframes sync-pulse/);
   assert.match(tarefasSource, /atualizarDadosComBloqueio/);
-  assert.doesNotMatch(appSource, /setInterval/);
-  assert.doesNotMatch(appSource, /clearInterval/);
   assert.doesNotMatch(appSource, /INTERVALO_SINCRONIZACAO_ICAL_MS/);
-  assert.doesNotMatch(appSource, /5 \* 60 \* 1000/);
 });

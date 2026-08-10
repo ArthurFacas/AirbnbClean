@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -146,7 +148,11 @@ test.before(async () => {
 });
 
 test.after(async () => {
-  processoServidor?.kill();
+  if (processoServidor && processoServidor.exitCode === null) {
+    processoServidor.kill();
+    await Promise.race([once(processoServidor, "exit"), delay(3000)]);
+  }
+
   await rm(pastaTemporaria, { recursive: true, force: true });
 });
 
