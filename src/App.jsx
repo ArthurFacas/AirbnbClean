@@ -16,6 +16,7 @@ import {
   normalizarResponsavelTarefaLimpeza,
 } from "./utils/cargos";
 import { buscarReservasIcal } from "./utils/ical";
+import { salvarApartamentoComSincronizacaoIcal } from "./utils/apartamentos";
 
 function normalizarTelefoneWhatsapp(telefone) {
   const somenteNumeros = String(telefone || "").replace(/\D/g, "");
@@ -276,6 +277,17 @@ export function mesclarTarefasIcalApartamento(
   const idsRecriados = new Set(
     tarefasRecriadas.map((tarefa) => String(tarefa.id)),
   );
+  const limitePendentesAntigas = new Date(`${dataMinima}T00:00:00`);
+  let dataLimitePendentesAntigas = "";
+
+  if (!Number.isNaN(limitePendentesAntigas.getTime())) {
+    limitePendentesAntigas.setDate(limitePendentesAntigas.getDate() - 30);
+    dataLimitePendentesAntigas = [
+      limitePendentesAntigas.getFullYear(),
+      String(limitePendentesAntigas.getMonth() + 1).padStart(2, "0"),
+      String(limitePendentesAntigas.getDate()).padStart(2, "0"),
+    ].join("-");
+  }
 
   return [
     ...tarefasAtuais.filter((tarefa) => {
@@ -292,6 +304,17 @@ export function mesclarTarefasIcalApartamento(
       }
 
       const dataCheckoutTarefa = obterDataReserva(tarefa.checkout);
+      const tarefaAirbnbIcal = String(tarefa.origem || "") === "Airbnb iCal";
+
+      if (
+        tarefaAirbnbIcal &&
+        dataCheckoutTarefa &&
+        dataLimitePendentesAntigas &&
+        dataCheckoutTarefa >= dataLimitePendentesAntigas &&
+        dataCheckoutTarefa <= dataMinima
+      ) {
+        return true;
+      }
 
       if (dataCheckoutTarefa && dataCheckoutTarefa < dataMinima) {
         return false;
@@ -671,45 +694,21 @@ function App() {
   }
 
   async function cadastrarApartamento(apartamento) {
-    const apartamentoId = Date.now();
-    const calendario = apartamento.ICALL
-      ? await buscarReservasIcal(apartamento.ICALL)
-      : null;
-    const reservas = calendario?.reservas || [];
-    const apartamentoCompleto = calendario
-      ? {
-          ...apartamento,
-          ICALL: calendario.urlIcal,
-          reservas,
-          dataReserva: calendario.proximaReserva?.checkin || "",
-          checkout: calendario.proximaReserva?.checkout || "",
-          horaCheckout: apartamento.horaCheckout || "11:00",
-        }
-      : { ...apartamento };
-    const novoApartamento = { ...apartamentoCompleto, id: apartamentoId };
-    const apartamentosAtualizados = [...apartamentos, novoApartamento];
-    const tarefasNovas = reservas.length
-      ? montarTarefasIcal(
-          apartamentoCompleto,
-          apartamentoId,
-          reservas,
-          calendario?.todasReservas || reservas,
-          [],
-          funcionarios,
-        )
-      : [];
-    const tarefasAtualizadas = reservas.length
-      ? [...tarefas, ...tarefasNovas]
-      : tarefas;
-
-    await salvarEstadoAtualizado({
+    const resultado = await salvarApartamentoComSincronizacaoIcal({
+      apartamento,
+      apartamentoId: Date.now(),
+      apartamentos,
       funcionarios,
-      apartamentos: apartamentosAtualizados,
-      tarefas: tarefasAtualizadas,
+      tarefas,
+      salvarEstadoAtualizado,
+      buscarReservasIcal,
+      montarTarefasIcal,
     });
 
-    setApartamentos(apartamentosAtualizados);
-    setTarefas(tarefasAtualizadas);
+    setApartamentos(resultado.apartamentos);
+    setTarefas(resultado.tarefas);
+
+    return resultado;
   }
 
   async function excluirApartamento(id) {

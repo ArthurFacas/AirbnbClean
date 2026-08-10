@@ -1892,6 +1892,39 @@ function mesclarColecaoLimitada(atuais, novas, visiveis) {
   return [...mescladas.filter((item) => !visiveis.has(String(item.id)) || novasPorId.has(String(item.id))), ...adicionais];
 }
 
+function obterIdsApartamentosNovos(atuais, novos) {
+  const idsAtuais = new Set(normalizarArray(atuais).map((item) => String(item.id)));
+
+  return normalizarArray(novos)
+    .map((apartamento) => String(apartamento.id || "").trim())
+    .filter((id) => id && !idsAtuais.has(id));
+}
+
+function permitirApartamentosCriadosAoUsuario(usuario, apartamentoIds) {
+  const idsNovos = normalizarArray(apartamentoIds)
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+
+  if (
+    usuarioEhMaster(usuario) ||
+    normalizarTipoAcesso(usuario?.apartamentos_acesso) !== "selecionados" ||
+    !idsNovos.length
+  ) {
+    return;
+  }
+
+  const permitidosAtuais = normalizarIdsPermitidos(
+    lerJson(usuario?.apartamentos_permitidos_json, []),
+  );
+  const permitidosAtualizados = [...new Set([...permitidosAtuais, ...idsNovos])];
+  const permitidosJson = JSON.stringify(permitidosAtualizados);
+
+  banco
+    .prepare("UPDATE usuarios SET apartamentos_permitidos_json = ? WHERE id = ?")
+    .run(permitidosJson, usuario.id);
+  usuario.apartamentos_permitidos_json = permitidosJson;
+}
+
 function garantirAtribuicoesPermitidas(usuario, tarefasAtuais, tarefasNovas) {
   const tarefasAtuaisPorId = criarMapaPorId(tarefasAtuais);
 
@@ -1945,12 +1978,6 @@ function prepararEstadoParaSalvar(usuario, estadoAtual, estadoNovo) {
       !apartamentosVisiveis.has(String(apartamento.id)) &&
       !criarMapaPorId(estadoAtual.apartamentos).has(String(apartamento.id))
     ) {
-      if (escopo.apartamentosAcesso === "selecionados") {
-        const erro = new Error("Sem permissao para acessar este apartamento.");
-        erro.status = 403;
-        throw erro;
-      }
-
       garantirPermissaoAcao(
         usuario,
         "cadastrarApartamentos",
@@ -2918,8 +2945,13 @@ const servidor = createServer(async (requisicao, resposta) => {
           estadoAtual,
           estado,
         );
+        const apartamentosCriados = obterIdsApartamentosNovos(
+          estadoAtual.apartamentos,
+          estadoPermitido.apartamentos,
+        );
 
         await salvarEstado(estadoPermitido, donoId);
+        permitirApartamentosCriadosAoUsuario(usuarioAtual, apartamentosCriados);
         const estadoSalvo = await carregarEstado(donoId);
         enviarJson(
           resposta,

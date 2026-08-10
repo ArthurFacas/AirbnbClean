@@ -1,5 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  obterMensagemErroCadastroApartamento,
+  validarFormularioApartamento,
+} from "../utils/apartamentos";
 
 const estadoInicial = {
   Bairro: "",
@@ -37,19 +41,28 @@ function CadastroApartamento({ onCadastrar }) {
     }
 
     setErroIcal("");
+
+    const mensagemValidacao = validarFormularioApartamento(formulario);
+
+    if (mensagemValidacao) {
+      setErroIcal(mensagemValidacao);
+      return;
+    }
+
     setCarregandoIcal(true);
 
     try {
-      await onCadastrar({
+      const resultado = await onCadastrar({
         ...formulario,
         horaCheckout: "11:00",
       });
       setFormulario(estadoInicial);
+      if (resultado?.avisoIcal) {
+        window.alert(resultado.avisoIcal);
+      }
       navigate("/dashboard/lista-apartamentos");
-    } catch {
-      setErroIcal(
-        "Nao consegui ler o iCal. Cole o link completo exportado pelo Airbnb e tente novamente.",
-      );
+    } catch (erro) {
+      setErroIcal(obterMensagemErroCadastroApartamento(erro));
     } finally {
       setCarregandoIcal(false);
     }
@@ -71,7 +84,7 @@ function CadastroApartamento({ onCadastrar }) {
         </button>
       </div>
 
-      <form className="form-panel" onSubmit={salvarApartamento}>
+      <form className="form-panel" onSubmit={salvarApartamento} noValidate>
         <h2 className="form-section-title">Endereco</h2>
 
         <label htmlFor="Bairro">Bairro</label>

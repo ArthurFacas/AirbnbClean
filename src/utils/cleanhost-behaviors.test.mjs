@@ -10,6 +10,7 @@ import { parsearTodasReservasIcal } from "./ical.js";
 let viteServer;
 let appModule;
 let tarefasModule;
+let apartamentosModule;
 
 test.before(async () => {
   viteServer = await createServer({
@@ -18,6 +19,7 @@ test.before(async () => {
   });
   appModule = await viteServer.ssrLoadModule("/src/App.jsx");
   tarefasModule = await viteServer.ssrLoadModule("/src/components/Tarefas.jsx");
+  apartamentosModule = await viteServer.ssrLoadModule("/src/utils/apartamentos.js");
 });
 
 test.after(async () => {
@@ -108,6 +110,207 @@ test("reserva nova com UID novo cria uma unica tarefa", () => {
   assert.equal(tarefas.length, 1);
   assert.equal(tarefas[0].icalKey, "uid:UID-NOVO");
   assert.equal(tarefas[0].checkout, "2099-09-03");
+});
+
+test("sync preserva pendentes Airbnb iCal antigas dentro de 30 dias sem mover ou duplicar", () => {
+  const hoje = "2026-08-10";
+  const apartamento = criarApartamento({
+    id: 99,
+    numero: "901",
+    Bairro: "Bela Vista",
+    predio: "Predio Sync",
+  });
+  const criarTarefa = ({
+    id,
+    checkin,
+    checkout,
+    status = "Pendente",
+    uid,
+  }) => ({
+    id,
+    apartamento: apartamento.numero,
+    apartamentoId: apartamento.id,
+    bairroApartamento: apartamento.Bairro,
+    checkin,
+    checkout,
+    horaCheckout: "11:00",
+    status,
+    funcionarioId: "func-1",
+    origem: "Airbnb iCal",
+    icalKey: uid ? `uid:${uid}` : "",
+    observacaoPrestador: `Observacao ${id}`,
+  });
+  const tarefasOriginais = [
+    criarTarefa({
+      id: 1,
+      checkin: "2026-08-07",
+      checkout: "2026-08-09",
+      uid: "UID-ONTEM",
+    }),
+    criarTarefa({
+      id: 2,
+      checkin: "2026-08-01",
+      checkout: "2026-08-05",
+      uid: "UID-5",
+    }),
+    criarTarefa({
+      id: 3,
+      checkin: "2026-07-18",
+      checkout: "2026-07-21",
+      uid: "UID-20",
+    }),
+    criarTarefa({
+      id: 4,
+      checkin: "2026-07-08",
+      checkout: "2026-07-11",
+      uid: "UID-30",
+    }),
+    criarTarefa({
+      id: 5,
+      checkin: "2026-07-07",
+      checkout: "2026-07-10",
+      uid: "UID-31",
+    }),
+    criarTarefa({
+      id: 6,
+      checkin: "2026-08-01",
+      checkout: "2026-08-05",
+      status: "Concluida",
+      uid: "UID-CONCLUIDA",
+    }),
+    criarTarefa({
+      id: 7,
+      checkin: "2026-08-06",
+      checkout: "2026-08-08",
+    }),
+  ];
+  const reservas = tarefasOriginais.map((tarefa) => ({
+    uid: tarefa.icalKey.replace(/^uid:/, ""),
+    checkin: tarefa.checkin,
+    checkout: tarefa.checkout,
+    resumo: "Reserved",
+  }));
+  const sincronizar = (tarefasAtuais) => {
+    const tarefasRecriadas = appModule.montarTarefasIcal(
+      apartamento,
+      apartamento.id,
+      reservas,
+      reservas,
+      tarefasAtuais,
+      [],
+    );
+
+    return appModule.mesclarTarefasIcalApartamento(
+      tarefasAtuais,
+      apartamento.id,
+      reservas,
+      tarefasRecriadas,
+      hoje,
+    );
+  };
+  let bancoSimulado = tarefasOriginais;
+
+  ["carregamento", "retorno de aba", "foco", "botao manual"].forEach(() => {
+    bancoSimulado = sincronizar(bancoSimulado);
+    const ids = bancoSimulado.map((tarefa) => tarefa.id);
+
+    assert.deepEqual(ids, [4, 3, 2, 6, 7, 1]);
+    assert.equal(new Set(ids).size, ids.length);
+    [1, 2, 3, 4, 7].forEach((id) => {
+      const original = tarefasOriginais.find((tarefa) => tarefa.id === id);
+      const preservada = bancoSimulado.find((tarefa) => tarefa.id === id);
+
+      assert.ok(preservada);
+      assert.equal(preservada.checkout, original.checkout);
+      assert.equal(preservada.status, original.status);
+      assert.equal(preservada.funcionarioId, original.funcionarioId);
+      assert.equal(preservada.observacaoPrestador, original.observacaoPrestador);
+      assert.equal(preservada.icalKey, original.icalKey);
+    });
+    assert.ok(bancoSimulado.every((tarefa) => tarefa.id !== 5));
+    assert.equal(bancoSimulado.find((tarefa) => tarefa.id === 6)?.status, "Concluida");
+  });
+
+  const calendario = tarefasModule.obterTarefasCalendario(bancoSimulado, hoje);
+
+  assert.ok(calendario.some((tarefa) => tarefa.id === 1));
+  assert.ok(calendario.some((tarefa) => tarefa.id === 2));
+  assert.ok(calendario.some((tarefa) => tarefa.id === 3));
+  assert.ok(calendario.some((tarefa) => tarefa.id === 4));
+  assert.ok(calendario.some((tarefa) => tarefa.id === 7));
+  assert.ok(calendario.every((tarefa) => tarefa.checkout !== hoje || tarefa.id !== 1));
+});
+
+test("cadastro de apartamento mostra erro claro para campo obrigatorio e erro do backend", () => {
+  const formularioValido = {
+    Bairro: "Bela Vista",
+    rua: "Rua Bela",
+    numero: "204",
+    "nome.do.predio": "Condominio Bela",
+    hospedesMaximos: "4",
+    ICALL: "https://example.com/calendario.ics",
+  };
+
+  assert.equal(
+    apartamentosModule.validarFormularioApartamento({
+      ...formularioValido,
+      Bairro: "",
+    }),
+    "Informe o bairro do apartamento.",
+  );
+  assert.equal(
+    apartamentosModule.validarFormularioApartamento(formularioValido),
+    "",
+  );
+  assert.equal(
+    apartamentosModule.obterMensagemErroCadastroApartamento(
+      new Error("Sem permissao para cadastrar apartamentos."),
+    ),
+    "Sem permissao para cadastrar apartamentos.",
+  );
+  assert.equal(
+    apartamentosModule.obterMensagemErroCadastroApartamento(null),
+    "Nao foi possivel salvar o apartamento. Confira os dados e tente novamente.",
+  );
+});
+
+test("cadastro de apartamento salva antes de sincronizar iCal e retorna aviso se calendario falhar", async () => {
+  const estadosSalvos = [];
+  const apartamento = {
+    Bairro: "Bela Vista",
+    rua: "Rua Bela",
+    numero: "204",
+    "nome.do.predio": "Condominio Bela",
+    hospedesMaximos: "4",
+    ICALL: "ical-invalido",
+  };
+  const resultado = await apartamentosModule.salvarApartamentoComSincronizacaoIcal({
+    apartamento,
+    apartamentoId: 204,
+    apartamentos: [],
+    funcionarios: [],
+    tarefas: [],
+    salvarEstadoAtualizado: async (estado) => {
+      estadosSalvos.push(JSON.parse(JSON.stringify(estado)));
+    },
+    buscarReservasIcal: async () => {
+      throw new Error("iCal invalido");
+    },
+    montarTarefasIcal: () => {
+      throw new Error("Nao deveria montar tarefas quando o iCal falha.");
+    },
+  });
+
+  assert.equal(estadosSalvos.length, 1);
+  assert.equal(estadosSalvos[0].apartamentos.length, 1);
+  assert.equal(estadosSalvos[0].apartamentos[0].id, 204);
+  assert.equal(estadosSalvos[0].apartamentos[0].Bairro, "Bela Vista");
+  assert.equal(resultado.apartamento.id, 204);
+  assert.equal(resultado.apartamentos.length, 1);
+  assert.equal(
+    resultado.avisoIcal,
+    apartamentosModule.obterAvisoFalhaIcalCadastroApartamento(),
+  );
 });
 
 test("bloqueio manual do Airbnb nao gera reserva de limpeza", () => {
