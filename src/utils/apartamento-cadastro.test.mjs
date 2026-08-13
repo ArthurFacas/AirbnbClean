@@ -333,6 +333,15 @@ test("portal do prestador isola tarefas por funcionario_id e ignora bairro", asy
       cargo: "Limpeza",
       bairro: "Bela Vista",
     },
+    {
+      id: 503,
+      nome: "Freelancer",
+      nascimento: "1992-01-01",
+      email: "freelancer@example.com",
+      telefone: "11966665555",
+      cargo: "Limpeza",
+      bairro: "",
+    },
   ];
   const apartamentos = [
     {
@@ -352,6 +361,7 @@ test("portal do prestador isola tarefas por funcionario_id e ignora bairro", asy
       horaCheckout: "11:00",
       status: "Pendente",
       funcionarioId: "501",
+      atribuicaoManual: true,
     },
     {
       id: 501002,
@@ -363,6 +373,7 @@ test("portal do prestador isola tarefas por funcionario_id e ignora bairro", asy
       horaCheckout: "11:00",
       status: "Pendente",
       funcionarioId: "502",
+      atribuicaoManual: true,
     },
     {
       id: 501003,
@@ -374,6 +385,18 @@ test("portal do prestador isola tarefas por funcionario_id e ignora bairro", asy
       horaCheckout: "11:00",
       status: "Pendente",
       funcionarioId: "",
+    },
+    {
+      id: 501004,
+      apartamentoId: 5011,
+      apartamento: "502",
+      bairroApartamento: "Bela Vista",
+      descricao: "Tarefa Freelancer",
+      checkout: "2099-09-04",
+      horaCheckout: "11:00",
+      status: "Pendente",
+      funcionarioId: "503",
+      atribuicaoManual: true,
     },
   ];
 
@@ -392,6 +415,7 @@ test("portal do prestador isola tarefas por funcionario_id e ignora bairro", asy
 
   const tokenDebora = "token-debora";
   const tokenMaria = "token-maria";
+  const tokenFreelancer = "token-freelancer";
   const banco = new DatabaseSync(path.join(pastaTemporaria, "database.sqlite"));
 
   try {
@@ -405,6 +429,11 @@ test("portal do prestador isola tarefas por funcionario_id e ignora bairro", asy
         "INSERT INTO prestador_sessoes (token_hash, funcionario_id) VALUES (?, ?)",
       )
       .run(hashCodigo(tokenMaria), "502");
+    banco
+      .prepare(
+        "INSERT INTO prestador_sessoes (token_hash, funcionario_id) VALUES (?, ?)",
+      )
+      .run(hashCodigo(tokenFreelancer), "503");
   } finally {
     banco.close();
   }
@@ -414,6 +443,9 @@ test("portal do prestador isola tarefas por funcionario_id e ignora bairro", asy
   );
   const portalMaria = await requisicaoJson(
     `/api/provider/portal?funcionarioId=502&token=${tokenMaria}`,
+  );
+  const portalFreelancer = await requisicaoJson(
+    `/api/provider/portal?funcionarioId=503&token=${tokenFreelancer}`,
   );
   const acessoCruzado = await requisicaoJson(
     `/api/provider/portal?funcionarioId=502&token=${tokenDebora}`,
@@ -428,6 +460,15 @@ test("portal do prestador isola tarefas por funcionario_id e ignora bairro", asy
   assert.deepEqual(
     portalMaria.dados.tarefas.map((tarefa) => tarefa.id),
     [501002],
+  );
+  assert.equal(
+    portalFreelancer.resposta.status,
+    200,
+    portalFreelancer.dados.erro,
+  );
+  assert.deepEqual(
+    portalFreelancer.dados.tarefas.map((tarefa) => tarefa.id),
+    [501004],
   );
   assert.equal(acessoCruzado.resposta.status, 401);
 });

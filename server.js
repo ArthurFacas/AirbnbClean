@@ -735,7 +735,7 @@ function normalizarEstadoPrestadorUnico(estado) {
 function persistirAtribuicoesTarefasNormalizadas(tarefasAtuais, tarefasNormalizadas, ownerId) {
   const atuaisPorId = criarMapaPorId(tarefasAtuais);
   const atualizarResponsavel = banco.prepare(
-    "UPDATE tarefas SET funcionario_id = ? WHERE owner_id = ? AND id = ?",
+    "UPDATE tarefas SET funcionario_id = ?, dados_json = ? WHERE owner_id = ? AND id = ?",
   );
 
   tarefasNormalizadas.forEach((tarefa) => {
@@ -743,9 +743,15 @@ function persistirAtribuicoesTarefasNormalizadas(tarefasAtuais, tarefasNormaliza
 
     if (
       atual &&
-      String(atual.funcionarioId || "") !== String(tarefa.funcionarioId || "")
+      (String(atual.funcionarioId || "") !== String(tarefa.funcionarioId || "") ||
+        Boolean(atual.atribuicaoManual) !== Boolean(tarefa.atribuicaoManual))
     ) {
-      atualizarResponsavel.run(String(tarefa.funcionarioId || ""), ownerId, tarefa.id);
+      atualizarResponsavel.run(
+        String(tarefa.funcionarioId || ""),
+        JSON.stringify(protegerSenhaPorta(tarefa)),
+        ownerId,
+        tarefa.id,
+      );
     }
   });
 }

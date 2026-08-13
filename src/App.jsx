@@ -243,6 +243,9 @@ export function montarTarefasIcal(
       const tarefaExistente = tarefasExistentes.find((tarefa) =>
         tarefaCorrespondeReserva(tarefa, reserva),
       );
+      const responsavelExistenteProtegido =
+        tarefaExistente?.atribuicaoManual ||
+        tarefaExistente?.status === "Concluida";
       let tarefaId = tarefaExistente?.id || apartamentoId * 1000 + index + 1;
 
       while (
@@ -266,13 +269,14 @@ export function montarTarefasIcal(
         checkout: dataCheckout,
         horaCheckout: apartamento.horaCheckout || "11:00",
         status: tarefaExistente?.status || "Pendente",
-        funcionarioId:
-          tarefaExistente?.funcionarioId ||
-          escolherPrestadorParaTarefa(
+        funcionarioId: responsavelExistenteProtegido
+          ? tarefaExistente?.funcionarioId || ""
+          : escolherPrestadorParaTarefa(
             { bairroApartamento: apartamento.Bairro || "" },
             funcionariosBase,
             apartamento,
           ),
+        atribuicaoManual: Boolean(tarefaExistente?.atribuicaoManual),
         origem: "Airbnb iCal",
         apartamentoId,
         icalKey: chaveReserva,
@@ -521,6 +525,41 @@ function App() {
       sessionStorage.removeItem("cleanhost:usuario");
     }
   }, [usuarioLogado]);
+
+  useEffect(() => {
+    if (!sincronizandoIcal) {
+      return undefined;
+    }
+
+    if (elementoEditavel(document.activeElement)) {
+      document.activeElement.blur();
+    }
+
+    function bloquearInteracao(evento) {
+      evento.preventDefault();
+      evento.stopPropagation();
+      evento.stopImmediatePropagation?.();
+    }
+
+    const eventosBloqueados = [
+      "beforeinput",
+      "click",
+      "input",
+      "keydown",
+      "pointerdown",
+      "submit",
+    ];
+
+    eventosBloqueados.forEach((evento) => {
+      document.addEventListener(evento, bloquearInteracao, true);
+    });
+
+    return () => {
+      eventosBloqueados.forEach((evento) => {
+        document.removeEventListener(evento, bloquearInteracao, true);
+      });
+    };
+  }, [sincronizandoIcal]);
 
   useEffect(() => {
     const estadoCarregadoParaUsuario =
@@ -879,7 +918,8 @@ function App() {
     const tarefasAtualizadas = prestadorFoiEditado
       ? tarefasAtualizadasBase.map((tarefa) =>
           String(tarefa.apartamentoId) === String(apartamentoId) &&
-          tarefa.status !== "Concluida"
+          tarefa.status !== "Concluida" &&
+          !tarefa.atribuicaoManual
             ? {
                 ...tarefa,
                 funcionarioId:
@@ -890,7 +930,7 @@ function App() {
                     apartamentoAtualizado,
                     { preservarResponsavelAtual: false },
                   ),
-                atribuicaoManual: Boolean(prestadorResponsavelId),
+                atribuicaoManual: false,
               }
             : tarefa,
         )
@@ -971,7 +1011,8 @@ function App() {
     );
     const tarefasAtualizadas = tarefas.map((tarefa) =>
       idsSelecionados.has(String(tarefa.apartamentoId)) &&
-      tarefa.status !== "Concluida"
+      tarefa.status !== "Concluida" &&
+      !tarefa.atribuicaoManual
         ? {
             ...tarefa,
             funcionarioId:
@@ -982,7 +1023,7 @@ function App() {
                 apartamentosAtualizadosPorId.get(String(tarefa.apartamentoId)),
                 { preservarResponsavelAtual: false },
               ),
-            atribuicaoManual: Boolean(funcionarioIdSeguro),
+            atribuicaoManual: false,
           }
         : tarefa,
     );

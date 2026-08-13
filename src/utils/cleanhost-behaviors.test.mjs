@@ -120,6 +120,9 @@ test("sync preserva pendentes Airbnb iCal antigas dentro de 30 dias sem mover ou
     Bairro: "Bela Vista",
     predio: "Predio Sync",
   });
+  const funcionarios = [
+    { id: "func-1", nome: "Debora", cargo: "Limpeza", bairro: "Bela Vista" },
+  ];
   const criarTarefa = ({
     id,
     checkin,
@@ -197,7 +200,7 @@ test("sync preserva pendentes Airbnb iCal antigas dentro de 30 dias sem mover ou
       reservas,
       reservas,
       tarefasAtuais,
-      [],
+      funcionarios,
     );
 
     return appModule.mesclarTarefasIcalApartamento(
@@ -239,6 +242,59 @@ test("sync preserva pendentes Airbnb iCal antigas dentro de 30 dias sem mover ou
   assert.ok(calendario.some((tarefa) => tarefa.id === 4));
   assert.ok(calendario.some((tarefa) => tarefa.id === 7));
   assert.ok(calendario.every((tarefa) => tarefa.checkout !== hoje || tarefa.id !== 1));
+});
+
+test("sync preserva responsavel manual da tarefa mesmo sem bairro do prestador", () => {
+  const apartamento = criarApartamento({
+    id: 88,
+    numero: "808",
+    Bairro: "Bela Vista",
+    prestadorResponsavelId: "debora",
+  });
+  const tarefaManual = {
+    id: 88001,
+    apartamento: apartamento.numero,
+    apartamentoId: apartamento.id,
+    bairroApartamento: apartamento.Bairro,
+    checkin: "2099-10-01",
+    checkout: "2099-10-03",
+    horaCheckout: "11:00",
+    status: "Pendente",
+    funcionarioId: "freelancer",
+    atribuicaoManual: true,
+    origem: "Airbnb iCal",
+    icalKey: "uid:MANUAL",
+  };
+  const reservaAtualizada = {
+    uid: "MANUAL",
+    checkin: "2099-10-01",
+    checkout: "2099-10-05",
+    resumo: "Reserved",
+  };
+  const funcionarios = [
+    { id: "debora", nome: "Debora", cargo: "Limpeza", bairro: "Bela Vista" },
+    { id: "freelancer", nome: "Freelancer", cargo: "Limpeza", bairro: "" },
+  ];
+  const tarefasRecriadas = appModule.montarTarefasIcal(
+    apartamento,
+    apartamento.id,
+    [reservaAtualizada],
+    [reservaAtualizada],
+    [tarefaManual],
+    funcionarios,
+  );
+  const tarefasFinais = appModule.mesclarTarefasIcalApartamento(
+    [tarefaManual],
+    apartamento.id,
+    [reservaAtualizada],
+    tarefasRecriadas,
+    "2099-10-01",
+  );
+
+  assert.equal(tarefasFinais.length, 1);
+  assert.equal(tarefasFinais[0].checkout, "2099-10-05");
+  assert.equal(tarefasFinais[0].funcionarioId, "freelancer");
+  assert.equal(tarefasFinais[0].atribuicaoManual, true);
 });
 
 test("cadastro de apartamento mostra erro claro para campo obrigatorio e erro do backend", () => {

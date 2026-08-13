@@ -275,9 +275,17 @@ function Dashboard({
 
       <main className="dashboard-main">
         {sincronizandoIcal && (
-          <div className="sync-status-indicator" role="status" aria-live="polite">
-            <span aria-hidden="true" />
-            Atualizando dados...
+          <div
+            aria-busy="true"
+            aria-live="polite"
+            className="sync-status-indicator sync-blocking-overlay"
+            role="status"
+          >
+            <div className="sync-blocking-dialog">
+              <span aria-hidden="true" />
+              <strong>Atualizando dados...</strong>
+              <p>Aguarde alguns segundos.</p>
+            </div>
           </div>
         )}
         {tarefasSemResponsavel > 0 &&

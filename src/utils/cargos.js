@@ -72,7 +72,7 @@ export function escolherResponsavelLimpeza({
     funcionarioIdAtual,
   );
 
-  if (preservarResponsavelAtual && funcionarioAtual) {
+  if (preservarResponsavelAtual && tarefa?.atribuicaoManual && funcionarioAtual) {
     return funcionarioIdAtual;
   }
 
@@ -85,15 +85,11 @@ export function escolherResponsavelLimpeza({
     return String(prestadorApartamento.id);
   }
 
-  if (funcionariosResponsaveis.length === 1) {
-    return String(funcionariosResponsaveis[0].id);
-  }
-
   const bairroApartamento = normalizarBairroComparacao(
     tarefa?.bairroApartamento || apartamento?.Bairro || apartamento?.bairro,
   );
 
-  if (bairroApartamento && funcionariosResponsaveis.length > 1) {
+  if (bairroApartamento) {
     const prestadoresDoBairro = funcionariosResponsaveis.filter((funcionario) =>
       obterBairrosAtendidos(funcionario).includes(bairroApartamento),
     );
@@ -146,6 +142,6 @@ export function normalizarAtribuicoesTarefasLimpeza(
 
     return String(tarefa?.funcionarioId || "") === funcionarioId
       ? tarefa
-      : { ...tarefa, funcionarioId };
+      : { ...tarefa, funcionarioId, atribuicaoManual: false };
   });
 }
