@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import SenhaPorta from "./SenhaPorta";
+import { funcionarioPodeSerResponsavelLimpeza } from "../utils/cargos";
 
 function obterValor(valor, fallback = "Nao informado") {
   return String(valor || "").trim() || fallback;
@@ -61,19 +62,46 @@ function criarFormularioApartamento(apartamento) {
     hospedesMaximos: apartamento.hospedesMaximos || "",
     senhaPorta: apartamento.senhaPorta || "",
     ICALL: apartamento.ICALL || apartamento.ical || "",
+    prestadorResponsavelId: apartamento.prestadorResponsavelId || "",
   };
 }
 
-function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
+function encontrarPrestador(funcionarios, prestadorId) {
+  return funcionarios.find(
+    (funcionario) => String(funcionario.id) === String(prestadorId),
+  );
+}
+
+function Listaapartamentos({
+  apartamentos,
+  funcionarios = [],
+  onAtualizar,
+  onAtribuirApartamentos,
+  onExcluir,
+}) {
   const navigate = useNavigate();
   const [apartamentoEditando, setApartamentoEditando] = useState("");
   const [formulario, setFormulario] = useState({});
   const [mostrarSenhaPorta, setMostrarSenhaPorta] = useState(false);
   const [buscaApartamento, setBuscaApartamento] = useState("");
+  const [apartamentosSelecionados, setApartamentosSelecionados] = useState([]);
+  const [prestadorMassa, setPrestadorMassa] = useState("");
   const possuiStatus = apartamentos.some((apartamento) => apartamento.status);
+  const funcionariosResponsaveis = funcionarios.filter(
+    funcionarioPodeSerResponsavelLimpeza,
+  );
   const apartamentosFiltrados = apartamentos.filter((apartamento) =>
     apartamentoCombinaComBusca(apartamento, buscaApartamento),
   );
+  const idsApartamentosFiltrados = apartamentosFiltrados.map((apartamento) =>
+    String(apartamento.id),
+  );
+  const selecionadosVisiveis = apartamentosSelecionados.filter((id) =>
+    idsApartamentosFiltrados.includes(String(id)),
+  );
+  const todosVisiveisSelecionados =
+    idsApartamentosFiltrados.length > 0 &&
+    idsApartamentosFiltrados.every((id) => apartamentosSelecionados.includes(id));
 
   function obterStatus(apartamento) {
     return apartamento.status || apartamento.situacao || "Ativo";
@@ -120,6 +148,38 @@ function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
     setMostrarSenhaPorta(false);
   }
 
+  function alternarApartamentoSelecionado(apartamentoId) {
+    const id = String(apartamentoId);
+
+    setApartamentosSelecionados((idsAtuais) =>
+      idsAtuais.includes(id)
+        ? idsAtuais.filter((item) => item !== id)
+        : [...idsAtuais, id],
+    );
+  }
+
+  function alternarTodosVisiveis() {
+    setApartamentosSelecionados((idsAtuais) => {
+      if (todosVisiveisSelecionados) {
+        return idsAtuais.filter((id) => !idsApartamentosFiltrados.includes(id));
+      }
+
+      return [...new Set([...idsAtuais, ...idsApartamentosFiltrados])];
+    });
+  }
+
+  function aplicarAtribuicaoMassa(funcionarioId) {
+    if (!selecionadosVisiveis.length || !onAtribuirApartamentos) {
+      return;
+    }
+
+    onAtribuirApartamentos(selecionadosVisiveis, funcionarioId);
+    setApartamentosSelecionados((idsAtuais) =>
+      idsAtuais.filter((id) => !selecionadosVisiveis.includes(id)),
+    );
+    setPrestadorMassa("");
+  }
+
   return (
     <div className="content-page apartments-page">
       <div className="page-title-row apartments-header">
@@ -160,6 +220,48 @@ function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
         )}
       </div>
 
+      {apartamentosFiltrados.length > 0 && (
+        <div className="bulk-actions-bar">
+          <label className="bulk-select-control">
+            <input
+              type="checkbox"
+              checked={todosVisiveisSelecionados}
+              onChange={alternarTodosVisiveis}
+            />
+            <span>Selecionar visiveis</span>
+          </label>
+          <strong>{selecionadosVisiveis.length} selecionado(s)</strong>
+          <select
+            value={prestadorMassa}
+            onChange={(event) => setPrestadorMassa(event.target.value)}
+            aria-label="Prestador para atribuicao em massa"
+          >
+            <option value="">Escolher prestador</option>
+            {funcionariosResponsaveis.map((funcionario) => (
+              <option key={funcionario.id} value={funcionario.id}>
+                {funcionario.nome}
+              </option>
+            ))}
+          </select>
+          <button
+            className="secondary-action"
+            type="button"
+            disabled={!selecionadosVisiveis.length || !prestadorMassa}
+            onClick={() => aplicarAtribuicaoMassa(prestadorMassa)}
+          >
+            Atribuir prestador
+          </button>
+          <button
+            className="secondary-action"
+            type="button"
+            disabled={!selecionadosVisiveis.length}
+            onClick={() => aplicarAtribuicaoMassa("")}
+          >
+            Remover prestador
+          </button>
+        </div>
+      )}
+
       {apartamentos.length === 0 ? (
         <div className="apartments-empty-state">
           <div aria-hidden="true">AP</div>
@@ -177,9 +279,28 @@ function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
             {apartamentosFiltrados.map((apartamento) => {
               const editando =
                 apartamentoEditando === String(apartamento.id);
+              const prestadorResponsavel = encontrarPrestador(
+                funcionariosResponsaveis,
+                apartamento.prestadorResponsavelId,
+              );
+              const apartamentoSelecionado = apartamentosSelecionados.includes(
+                String(apartamento.id),
+              );
 
               return (
                 <article className="info-card apartment-card" key={apartamento.id}>
+                {!editando && (
+                  <label className="card-selection-control">
+                    <input
+                      type="checkbox"
+                      checked={apartamentoSelecionado}
+                      onChange={() =>
+                        alternarApartamentoSelecionado(apartamento.id)
+                      }
+                    />
+                    <span>Selecionar</span>
+                  </label>
+                )}
                 {editando ? (
                   <form
                     className="apartment-edit-form"
@@ -280,6 +401,23 @@ function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
                       required
                     />
 
+                    <label htmlFor={`apt-prestador-${apartamento.id}`}>
+                      Prestador padrao
+                    </label>
+                    <select
+                      id={`apt-prestador-${apartamento.id}`}
+                      name="prestadorResponsavelId"
+                      value={formulario.prestadorResponsavelId || ""}
+                      onChange={atualizarCampo}
+                    >
+                      <option value="">Sem prestador definido</option>
+                      {funcionariosResponsaveis.map((funcionario) => (
+                        <option key={funcionario.id} value={funcionario.id}>
+                          {funcionario.nome}
+                        </option>
+                      ))}
+                    </select>
+
                     <div className="apartment-actions">
                       <button className="primary-action" type="submit">
                         Salvar
@@ -327,6 +465,13 @@ function Listaapartamentos({ apartamentos, onAtualizar, onExcluir }) {
                           {apartamento.hospedesMaximos
                             ? `Ate ${apartamento.hospedesMaximos}`
                             : "Nao informado"}
+                        </strong>
+                      </div>
+                      <div>
+                        <span>Prestador</span>
+                        <strong>
+                          {prestadorResponsavel?.nome ||
+                            "Sem prestador definido"}
                         </strong>
                       </div>
                     </div>

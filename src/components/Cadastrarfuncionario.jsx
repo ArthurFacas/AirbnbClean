@@ -208,7 +208,6 @@ function Cadastrarfuncionario({
               value={formulario.bairro}
               onChange={atualizarCampo}
               placeholder="Ex: Centro, Jardins, Pinheiros"
-              required
             />
           </>
         )}

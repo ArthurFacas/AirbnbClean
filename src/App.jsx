@@ -76,14 +76,24 @@ function usuarioPode(usuario, permissao) {
   return usuarioEhMaster(usuario) || Boolean(usuario?.permissoes?.[permissao]);
 }
 
-function escolherPrestadorParaTarefa(tarefa, funcionariosAtuais) {
-  return normalizarResponsavelTarefaLimpeza(tarefa, funcionariosAtuais);
+function escolherPrestadorParaTarefa(tarefa, funcionariosAtuais, apartamento) {
+  return normalizarResponsavelTarefaLimpeza(
+    tarefa,
+    funcionariosAtuais,
+    apartamento,
+    { preservarResponsavelAtual: false },
+  );
 }
 
-function atribuirTarefasPorPrestador(tarefasAtuais, funcionariosAtuais) {
+function atribuirTarefasPorPrestador(
+  tarefasAtuais,
+  funcionariosAtuais,
+  apartamentosAtuais = [],
+) {
   return normalizarAtribuicoesTarefasLimpeza(
     tarefasAtuais,
     funcionariosAtuais,
+    apartamentosAtuais,
   );
 }
 
@@ -261,6 +271,7 @@ export function montarTarefasIcal(
           escolherPrestadorParaTarefa(
             { bairroApartamento: apartamento.Bairro || "" },
             funcionariosBase,
+            apartamento,
           ),
         origem: "Airbnb iCal",
         apartamentoId,
@@ -411,6 +422,7 @@ function App() {
       atribuirTarefasPorPrestador(
         tarefasComApartamento,
         funcionariosCarregados,
+        apartamentosCarregados,
       ),
     );
     setUsuarioEstadoCarregadoId(String(usuario.id));
@@ -613,7 +625,11 @@ function App() {
     };
     const funcionariosAtualizados = [...funcionarios, novoFuncionario];
     const tarefasAtualizadas = usuarioPode(usuarioLogado, "atribuirTarefas")
-      ? atribuirTarefasPorPrestador(tarefas, funcionariosAtualizados)
+      ? atribuirTarefasPorPrestador(
+          tarefas,
+          funcionariosAtualizados,
+          apartamentos,
+        )
       : tarefas;
 
     await salvarEstadoAtualizado({
@@ -669,7 +685,11 @@ function App() {
         : funcionario,
     );
     const tarefasAtualizadas = usuarioPode(usuarioLogado, "atribuirTarefas")
-      ? atribuirTarefasPorPrestador(tarefas, funcionariosAtualizados)
+      ? atribuirTarefasPorPrestador(
+          tarefas,
+          funcionariosAtualizados,
+          apartamentos,
+        )
       : tarefas;
 
     await salvarEstadoAtualizado({
@@ -689,6 +709,7 @@ function App() {
     const tarefasAtualizadas = atribuirTarefasPorPrestador(
       tarefas,
       funcionariosAtualizados,
+      apartamentos,
     );
 
     try {
@@ -760,6 +781,7 @@ function App() {
       tarefas: atribuirTarefasPorPrestador(
         tarefasAtualizadas,
         estadoBase.funcionarios,
+        apartamentosAtualizados,
       ),
     };
   }
@@ -812,7 +834,7 @@ function App() {
         ? { ...apartamento, ...campos }
         : apartamento,
     );
-    const tarefasAtualizadas = tarefas.map((tarefa) => {
+    const tarefasAtualizadasBase = tarefas.map((tarefa) => {
       if (String(tarefa.apartamentoId) !== String(apartamentoId)) {
         return tarefa;
       }
@@ -846,6 +868,33 @@ function App() {
           : tarefa.observacaoPrestador,
       };
     });
+    const prestadorFoiEditado = Object.prototype.hasOwnProperty.call(
+      campos,
+      "prestadorResponsavelId",
+    );
+    const prestadorResponsavelId = String(campos.prestadorResponsavelId || "");
+    const apartamentoAtualizado = apartamentosAtualizados.find(
+      (apartamento) => String(apartamento.id) === String(apartamentoId),
+    );
+    const tarefasAtualizadas = prestadorFoiEditado
+      ? tarefasAtualizadasBase.map((tarefa) =>
+          String(tarefa.apartamentoId) === String(apartamentoId) &&
+          tarefa.status !== "Concluida"
+            ? {
+                ...tarefa,
+                funcionarioId:
+                  prestadorResponsavelId ||
+                  normalizarResponsavelTarefaLimpeza(
+                    { ...tarefa, funcionarioId: "" },
+                    funcionarios,
+                    apartamentoAtualizado,
+                    { preservarResponsavelAtual: false },
+                  ),
+                atribuicaoManual: Boolean(prestadorResponsavelId),
+              }
+            : tarefa,
+        )
+      : tarefasAtualizadasBase;
 
     setApartamentos(apartamentosAtualizados);
     setTarefas(tarefasAtualizadas);
@@ -868,7 +917,11 @@ function App() {
       : "";
     const tarefasAtualizadas = tarefas.map((tarefa) =>
       tarefa.id === tarefaId
-        ? { ...tarefa, funcionarioId: funcionarioIdSeguro }
+        ? {
+            ...tarefa,
+            funcionarioId: funcionarioIdSeguro,
+            atribuicaoManual: Boolean(funcionarioIdSeguro),
+          }
         : tarefa,
     );
 
@@ -884,6 +937,84 @@ function App() {
   function atualizarTarefa(tarefaId, campos) {
     const tarefasAtualizadas = tarefas.map((tarefa) =>
       String(tarefa.id) === String(tarefaId) ? { ...tarefa, ...campos } : tarefa,
+    );
+
+    setTarefas(tarefasAtualizadas);
+
+    salvarEstadoAtualizado({
+      funcionarios,
+      apartamentos,
+      tarefas: tarefasAtualizadas,
+    }).catch(() => {});
+  }
+
+  function atribuirApartamentosEmMassa(apartamentoIds, funcionarioId) {
+    const idsSelecionados = new Set(apartamentoIds.map(String));
+    const funcionarioSelecionado = funcionarios.find(
+      (funcionario) => String(funcionario.id) === String(funcionarioId),
+    );
+    const funcionarioIdSeguro = funcionarioPodeSerResponsavelLimpeza(
+      funcionarioSelecionado,
+    )
+      ? String(funcionarioId)
+      : "";
+    const apartamentosAtualizados = apartamentos.map((apartamento) =>
+      idsSelecionados.has(String(apartamento.id))
+        ? { ...apartamento, prestadorResponsavelId: funcionarioIdSeguro }
+        : apartamento,
+    );
+    const apartamentosAtualizadosPorId = new Map(
+      apartamentosAtualizados.map((apartamento) => [
+        String(apartamento.id),
+        apartamento,
+      ]),
+    );
+    const tarefasAtualizadas = tarefas.map((tarefa) =>
+      idsSelecionados.has(String(tarefa.apartamentoId)) &&
+      tarefa.status !== "Concluida"
+        ? {
+            ...tarefa,
+            funcionarioId:
+              funcionarioIdSeguro ||
+              normalizarResponsavelTarefaLimpeza(
+                { ...tarefa, funcionarioId: "" },
+                funcionarios,
+                apartamentosAtualizadosPorId.get(String(tarefa.apartamentoId)),
+                { preservarResponsavelAtual: false },
+              ),
+            atribuicaoManual: Boolean(funcionarioIdSeguro),
+          }
+        : tarefa,
+    );
+
+    setApartamentos(apartamentosAtualizados);
+    setTarefas(tarefasAtualizadas);
+
+    salvarEstadoAtualizado({
+      funcionarios,
+      apartamentos: apartamentosAtualizados,
+      tarefas: tarefasAtualizadas,
+    }).catch(() => {});
+  }
+
+  function atribuirTarefasEmMassa(tarefaIds, funcionarioId) {
+    const idsSelecionados = new Set(tarefaIds.map(String));
+    const funcionarioSelecionado = funcionarios.find(
+      (funcionario) => String(funcionario.id) === String(funcionarioId),
+    );
+    const funcionarioIdSeguro = funcionarioPodeSerResponsavelLimpeza(
+      funcionarioSelecionado,
+    )
+      ? String(funcionarioId)
+      : "";
+    const tarefasAtualizadas = tarefas.map((tarefa) =>
+      idsSelecionados.has(String(tarefa.id)) && tarefa.status !== "Concluida"
+        ? {
+            ...tarefa,
+            funcionarioId: funcionarioIdSeguro,
+            atribuicaoManual: Boolean(funcionarioIdSeguro),
+          }
+        : tarefa,
     );
 
     setTarefas(tarefasAtualizadas);
@@ -1163,7 +1294,9 @@ function App() {
             usuarioPode(usuarioLogado, "visualizarApartamentos") ? (
               <Listaapartamentos
                 apartamentos={apartamentos}
+                funcionarios={funcionarios}
                 onAtualizar={atualizarApartamento}
+                onAtribuirApartamentos={atribuirApartamentosEmMassa}
                 onExcluir={excluirApartamento}
               />
             ) : (
@@ -1179,6 +1312,7 @@ function App() {
               <Tarefas
                 funcionarios={funcionarios}
                 onAtribuirFuncionario={atribuirFuncionarioTarefa}
+                onAtribuirTarefas={atribuirTarefasEmMassa}
                 onAtualizarDados={atualizarDados}
                 onAtualizarTarefa={atualizarTarefa}
                 sincronizandoIcal={sincronizandoIcal}

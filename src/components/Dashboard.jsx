@@ -1,6 +1,7 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import TarefaCard from "./TarefaCard";
 import { criarDataCheckout } from "../utils/tarefas";
+import { funcionarioPodeSerResponsavelLimpeza } from "../utils/cargos";
 import "./Dashboard.css";
 
 function compararTarefasPorCheckout(tarefaA, tarefaB) {
@@ -168,6 +169,16 @@ function Dashboard({
   const navigate = useNavigate();
   const isDashboardHome = location.pathname === "/dashboard";
   const usuarioMaster = normalizarPapelUsuario(usuario?.papel) === "Master";
+  const idsFuncionariosResponsaveis = new Set(
+    funcionarios
+      .filter(funcionarioPodeSerResponsavelLimpeza)
+      .map((funcionario) => String(funcionario.id)),
+  );
+  const tarefasSemResponsavel = tarefasPendentes.filter(
+    (tarefa) =>
+      !tarefa.funcionarioId ||
+      !idsFuncionariosResponsaveis.has(String(tarefa.funcionarioId)),
+  ).length;
   const navItems = [
     { path: "/dashboard", label: "Dashboard", icon: "DB", permitido: true },
     {
@@ -268,6 +279,17 @@ function Dashboard({
             <span aria-hidden="true" />
             Atualizando dados...
           </div>
+        )}
+        {tarefasSemResponsavel > 0 &&
+          !location.pathname.startsWith("/dashboard/tarefas") && (
+          <button
+            className="unassigned-task-notice"
+            type="button"
+            onClick={() => navigate("/dashboard/tarefas?semResponsavel=1")}
+          >
+            <span aria-hidden="true">!</span>
+            {tarefasSemResponsavel} tarefa(s) sem responsavel
+          </button>
         )}
         {isDashboardHome ? (
           <DashboardHome

@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { calcularUrgencia } from "../utils/tarefas";
-import { funcionarioPodeSerResponsavelLimpeza } from "../utils/cargos";
+import {
+  funcionarioPodeSerResponsavelLimpeza,
+  normalizarBairroComparacao,
+} from "../utils/cargos";
 import SenhaPorta from "./SenhaPorta";
 
 function formatarData(data) {
@@ -45,23 +48,15 @@ function encontrarFuncionario(funcionarios, funcionarioId) {
   );
 }
 
-function normalizarBairro(valor) {
-  return String(valor || "")
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
 function obterBairrosAtendidos(funcionario) {
   return String(funcionario?.bairro || "")
     .split(/[,;|]/)
-    .map(normalizarBairro)
+    .map(normalizarBairroComparacao)
     .filter(Boolean);
 }
 
 function funcionarioNoMesmoBairro(funcionario, tarefa) {
-  const bairroApartamento = normalizarBairro(tarefa.bairroApartamento);
+  const bairroApartamento = normalizarBairroComparacao(tarefa.bairroApartamento);
 
   return Boolean(
     bairroApartamento &&

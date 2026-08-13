@@ -324,6 +324,14 @@ function encontrarFuncionario(funcionarios, funcionarioId) {
   );
 }
 
+function deveAbrirSemResponsavelPorUrl() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return new URLSearchParams(window.location.search).get("semResponsavel") === "1";
+}
+
 export function obterTarefasCalendario(tarefas, dataHoje, buscaApartamento = "") {
   const dataLimiteCalendario = obterDataLimiteCalendario(dataHoje);
 
@@ -349,12 +357,18 @@ function Tarefas({
   tarefas,
   funcionarios,
   onAtribuirFuncionario,
+  onAtribuirTarefas,
   onAtualizarDados,
   onAtualizarTarefa,
   sincronizandoIcal,
 }) {
-  const [visualizacao, setVisualizacao] = useState("calendario");
-  const [prestadorSelecionado, setPrestadorSelecionado] = useState("");
+  const abrirSemResponsavel = deveAbrirSemResponsavelPorUrl();
+  const [visualizacao, setVisualizacao] = useState(
+    abrirSemResponsavel ? "prestador" : "calendario",
+  );
+  const [prestadorSelecionado, setPrestadorSelecionado] = useState(
+    abrirSemResponsavel ? "sem-responsavel" : "",
+  );
   const [dataSelecionada, setDataSelecionada] = useState("");
   const [dataAbertaPeloCalendario, setDataAbertaPeloCalendario] =
     useState(false);
@@ -375,6 +389,8 @@ function Tarefas({
   const [dataFimFiltro, setDataFimFiltro] = useState("");
   const [buscaApartamento, setBuscaApartamento] = useState("");
   const [diasCalendarioExpandidos, setDiasCalendarioExpandidos] = useState({});
+  const [tarefasSelecionadas, setTarefasSelecionadas] = useState([]);
+  const [prestadorMassa, setPrestadorMassa] = useState("");
   const dataAmanha = obterAmanha();
   const dataHoje = obterHojeInput();
   const funcionariosResponsaveis = funcionarios.filter(
@@ -403,7 +419,9 @@ function Tarefas({
     (tarefa) => obterDataCheckout(tarefa) === dataAmanha,
   ).length;
   const tarefasSemResponsavel = tarefasPendentes.filter(
-    (tarefa) => !tarefa.funcionarioId,
+    (tarefa) =>
+      !tarefa.funcionarioId ||
+      !idsFuncionariosResponsaveis.has(String(tarefa.funcionarioId)),
   ).length;
   const tarefasPrioritarias = tarefasPendentes.filter(
     (tarefa) => tarefa.prioridade,
@@ -498,6 +516,24 @@ function Tarefas({
       String(grupo.funcionario?.id || grupo.tipo) === prestadorSelecionado,
   );
 
+  const tarefasPendentesVisiveisParaMassa =
+    visualizacao === "lista"
+      ? tarefasPendentes
+      : visualizacao === "data"
+        ? tarefasFiltroDataVisiveis
+        : visualizacao === "prestador"
+          ? gruposPrestadoresVisiveis.flatMap((grupo) => grupo.tarefas)
+          : [];
+  const idsTarefasVisiveis = tarefasPendentesVisiveisParaMassa.map((tarefa) =>
+    String(tarefa.id),
+  );
+  const tarefasSelecionadasVisiveis = tarefasSelecionadas.filter((id) =>
+    idsTarefasVisiveis.includes(String(id)),
+  );
+  const todasTarefasVisiveisSelecionadas =
+    idsTarefasVisiveis.length > 0 &&
+    idsTarefasVisiveis.every((id) => tarefasSelecionadas.includes(id));
+
   function abrirDataDoCalendario(data) {
     setMesRetornoCalendario(mesCalendario);
     setDataSelecionada(data);
@@ -583,6 +619,66 @@ function Tarefas({
     }
   }
 
+  function alternarTarefaSelecionada(tarefaId) {
+    const id = String(tarefaId);
+
+    setTarefasSelecionadas((idsAtuais) =>
+      idsAtuais.includes(id)
+        ? idsAtuais.filter((item) => item !== id)
+        : [...idsAtuais, id],
+    );
+  }
+
+  function alternarTodasTarefasVisiveis() {
+    setTarefasSelecionadas((idsAtuais) => {
+      if (todasTarefasVisiveisSelecionadas) {
+        return idsAtuais.filter((id) => !idsTarefasVisiveis.includes(id));
+      }
+
+      return [...new Set([...idsAtuais, ...idsTarefasVisiveis])];
+    });
+  }
+
+  function aplicarAtribuicaoTarefasMassa() {
+    if (
+      !tarefasSelecionadasVisiveis.length ||
+      !prestadorMassa ||
+      !onAtribuirTarefas
+    ) {
+      return;
+    }
+
+    onAtribuirTarefas(tarefasSelecionadasVisiveis, prestadorMassa);
+    setTarefasSelecionadas((idsAtuais) =>
+      idsAtuais.filter((id) => !tarefasSelecionadasVisiveis.includes(id)),
+    );
+    setPrestadorMassa("");
+  }
+
+  function renderizarTarefaSelecionavel(tarefa, selectId) {
+    const selecionada = tarefasSelecionadas.includes(String(tarefa.id));
+
+    return (
+      <div className="selectable-task-card" key={tarefa.id}>
+        <label className="card-selection-control">
+          <input
+            type="checkbox"
+            checked={selecionada}
+            onChange={() => alternarTarefaSelecionada(tarefa.id)}
+          />
+          <span>Selecionar</span>
+        </label>
+        <TarefaCard
+          funcionarios={funcionariosResponsaveis}
+          onAtribuirFuncionario={onAtribuirFuncionario}
+          onAtualizarTarefa={onAtualizarTarefa}
+          selectId={selectId}
+          tarefa={tarefa}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="content-page tasks-page">
       <div className="view-switcher" aria-label="Visualizacao das tarefas">
@@ -662,6 +758,40 @@ function Tarefas({
           </button>
         </div>
       </div>
+
+      {idsTarefasVisiveis.length > 0 && (
+        <div className="bulk-actions-bar">
+          <label className="bulk-select-control">
+            <input
+              type="checkbox"
+              checked={todasTarefasVisiveisSelecionadas}
+              onChange={alternarTodasTarefasVisiveis}
+            />
+            <span>Selecionar visiveis</span>
+          </label>
+          <strong>{tarefasSelecionadasVisiveis.length} selecionada(s)</strong>
+          <select
+            value={prestadorMassa}
+            onChange={(event) => setPrestadorMassa(event.target.value)}
+            aria-label="Prestador para atribuicao em massa de tarefas"
+          >
+            <option value="">Escolher prestador</option>
+            {funcionariosResponsaveis.map((funcionario) => (
+              <option key={funcionario.id} value={funcionario.id}>
+                {funcionario.nome}
+              </option>
+            ))}
+          </select>
+          <button
+            className="secondary-action"
+            type="button"
+            disabled={!tarefasSelecionadasVisiveis.length || !prestadorMassa}
+            onClick={aplicarAtribuicaoTarefasMassa}
+          >
+            Atribuir prestador
+          </button>
+        </div>
+      )}
 
       {visualizacao === "calendario" && (
         <div className="monthly-calendar">
@@ -778,16 +908,12 @@ function Tarefas({
 
       {visualizacao === "lista" && (
         <div className="list-grid">
-          {tarefasPendentes.map((tarefa) => (
-            <TarefaCard
-              key={tarefa.id}
-              funcionarios={funcionariosResponsaveis}
-              onAtribuirFuncionario={onAtribuirFuncionario}
-              onAtualizarTarefa={onAtualizarTarefa}
-              selectId={`lista-funcionario-${tarefa.id}`}
-              tarefa={tarefa}
-            />
-          ))}
+          {tarefasPendentes.map((tarefa) =>
+            renderizarTarefaSelecionavel(
+              tarefa,
+              `lista-funcionario-${tarefa.id}`,
+            ),
+          )}
         </div>
       )}
 
@@ -950,14 +1076,10 @@ function Tarefas({
                         </div>
                       </div>
                     ) : (
-                      <TarefaCard
-                        key={tarefa.id}
-                        funcionarios={funcionariosResponsaveis}
-                        onAtribuirFuncionario={onAtribuirFuncionario}
-                        onAtualizarTarefa={onAtualizarTarefa}
-                        selectId={`data-funcionario-${tarefa.id}`}
-                        tarefa={tarefa}
-                      />
+                      renderizarTarefaSelecionavel(
+                        tarefa,
+                        `data-funcionario-${tarefa.id}`,
+                      )
                     ),
                   )}
                 </div>
@@ -1063,14 +1185,10 @@ function Tarefas({
 
                 <div className="list-grid">
                   {grupo.tarefas.map((tarefa) => (
-                    <TarefaCard
-                      key={tarefa.id}
-                      funcionarios={funcionariosResponsaveis}
-                      onAtribuirFuncionario={onAtribuirFuncionario}
-                      onAtualizarTarefa={onAtualizarTarefa}
-                      selectId={`prestador-funcionario-${tarefa.id}`}
-                      tarefa={tarefa}
-                    />
+                    renderizarTarefaSelecionavel(
+                      tarefa,
+                      `prestador-funcionario-${tarefa.id}`,
+                    )
                   ))}
                 </div>
               </section>

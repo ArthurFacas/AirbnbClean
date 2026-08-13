@@ -4,7 +4,11 @@ import PermissoesAdministrativas from "./PermissoesAdministrativas";
 import {
   criarConfiguracaoPermissoesPadrao,
 } from "../utils/permissoesAdministrativas";
-import { cargoEhGestora } from "../utils/cargos";
+import {
+  cargoEhGestora,
+  funcionarioPodeSerResponsavelLimpeza,
+  normalizarBairroComparacao,
+} from "../utils/cargos";
 
 function calcularIdade(nascimento) {
   const hoje = new Date();
@@ -63,14 +67,6 @@ function obterValor(valor, fallback = "Nao informado") {
     : fallback;
 }
 
-function normalizarBairroComparacao(valor) {
-  return String(valor || "")
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
 function normalizarNomeBairro(valor) {
   return String(valor || "").trim().replace(/\s+/g, " ");
 }
@@ -113,6 +109,15 @@ function montarBairrosDisponiveis(apartamentos, bairrosAtuais = []) {
   return [...bairros.values()].sort((a, b) =>
     a.localeCompare(b, "pt-BR", { sensitivity: "base" }),
   );
+}
+
+function obterRotuloApartamento(apartamento) {
+  const predio = String(
+    apartamento["nome.do.predio"] || apartamento.predio || "",
+  ).trim();
+  const numero = String(apartamento.numero || "").trim();
+
+  return [predio, numero].filter(Boolean).join(" - ") || "Apartamento";
 }
 
 function montarLinkWhatsapp(funcionario, linkConvite) {
@@ -212,6 +217,11 @@ function Listafuncionarios({
   const bairrosDisponiveisEdicao = montarBairrosDisponiveis(
     apartamentos,
     separarBairros(funcionarioEmEdicao?.bairro),
+  );
+  const apartamentosDoFuncionarioEmEdicao = apartamentos.filter(
+    (apartamento) =>
+      String(apartamento.prestadorResponsavelId || "") ===
+      String(funcionarioEmEdicao?.id || ""),
   );
 
   useEffect(() => {
@@ -493,11 +503,6 @@ function Listafuncionarios({
       separarBairros(formularioEdicao.bairrosSelecionados?.join(",")),
     );
 
-    if (!editandoGestora && !bairrosSelecionados.length) {
-      setErroEdicao("Selecione pelo menos um bairro atendido.");
-      return;
-    }
-
     setSalvandoEdicao(true);
     setErroEdicao("");
 
@@ -568,7 +573,14 @@ function Listafuncionarios({
         </div>
       ) : (
         <div className="providers-grid">
-          {funcionarios.map((funcionario) => (
+          {funcionarios.map((funcionario) => {
+            const apartamentosAtribuidos = apartamentos.filter(
+              (apartamento) =>
+                String(apartamento.prestadorResponsavelId || "") ===
+                String(funcionario.id),
+            );
+
+            return (
             <article className="info-card provider-admin-card" key={funcionario.id}>
               <div className="provider-card-header">
                 <div className="provider-avatar" aria-hidden="true">
@@ -605,7 +617,23 @@ function Listafuncionarios({
                 {!funcionarioEhGestora(funcionario) && (
                   <div>
                     <span>Bairro(s) que atende</span>
-                    <strong>{obterValor(funcionario.bairro)}</strong>
+                    <strong>{obterValor(funcionario.bairro, "Sem bairros definidos")}</strong>
+                  </div>
+                )}
+                {funcionarioPodeSerResponsavelLimpeza(funcionario) && (
+                  <div>
+                    <span>Apartamentos atribuidos</span>
+                    <strong>
+                      {apartamentosAtribuidos.length
+                        ? apartamentosAtribuidos
+                            .map(obterRotuloApartamento)
+                            .slice(0, 3)
+                            .join(", ")
+                        : "Nenhum apartamento"}
+                      {apartamentosAtribuidos.length > 3
+                        ? ` +${apartamentosAtribuidos.length - 3}`
+                        : ""}
+                    </strong>
                   </div>
                 )}
                 <div>
@@ -716,7 +744,8 @@ function Listafuncionarios({
                 </div>
               )}
             </article>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -900,6 +929,21 @@ function Listafuncionarios({
                 </div>
               )}
             </section>
+            )}
+
+            {funcionarioPodeSerResponsavelLimpeza(funcionarioEmEdicao) && (
+              <section className="provider-edit-section">
+                <h3>Apartamentos atribuidos</h3>
+                {apartamentosDoFuncionarioEmEdicao.length ? (
+                  <p className="form-hint">
+                    {apartamentosDoFuncionarioEmEdicao
+                      .map(obterRotuloApartamento)
+                      .join(", ")}
+                  </p>
+                ) : (
+                  <p className="form-hint">Nenhum apartamento ligado a este prestador.</p>
+                )}
+              </section>
             )}
 
             {erroEdicao && <p className="form-error">{erroEdicao}</p>}

@@ -717,14 +717,17 @@ function obterOwnerOperacional(usuario) {
 
 function normalizarEstadoPrestadorUnico(estado) {
   const funcionarios = normalizarArray(estado.funcionarios);
+  const apartamentos = normalizarArray(estado.apartamentos);
   const tarefas = normalizarArray(estado.tarefas);
 
   return {
     ...estado,
     funcionarios,
+    apartamentos,
     tarefas: normalizarAtribuicoesTarefasLimpeza(
       tarefas,
       funcionarios,
+      apartamentos,
     ),
   };
 }

@@ -304,3 +304,130 @@ test("gestora com apartamentos selecionados pode cadastrar novo apartamento sem 
   assert.equal(apartamentos.filter((item) => item.Bairro === "Bela Vista").length, 3);
   assert.deepEqual(apartamentos.map((item) => item.id), [101, 102, 103, 104]);
 });
+
+test("portal do prestador isola tarefas por funcionario_id e ignora bairro", async () => {
+  const loginMaster = await requisicaoJson("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({
+      email: "master-apartamento@example.com",
+      senha: "senhateste",
+    }),
+  });
+  const master = loginMaster.dados.usuario;
+  const funcionarios = [
+    {
+      id: 501,
+      nome: "Debora",
+      nascimento: "1990-01-01",
+      email: "debora@example.com",
+      telefone: "11988887777",
+      cargo: "Limpeza",
+      bairro: "Bela Vista",
+    },
+    {
+      id: 502,
+      nome: "Maria",
+      nascimento: "1991-01-01",
+      email: "maria@example.com",
+      telefone: "11977776666",
+      cargo: "Limpeza",
+      bairro: "Bela Vista",
+    },
+  ];
+  const apartamentos = [
+    {
+      ...apartamento(5010, "Bela Vista", "Rua Um", "501", "Predio Debora"),
+      prestadorResponsavelId: "502",
+    },
+    apartamento(5011, "Bela Vista", "Rua Dois", "502", "Predio Sem Responsavel"),
+  ];
+  const tarefas = [
+    {
+      id: 501001,
+      apartamentoId: 5010,
+      apartamento: "501",
+      bairroApartamento: "Bela Vista",
+      descricao: "Tarefa Debora",
+      checkout: "2099-09-01",
+      horaCheckout: "11:00",
+      status: "Pendente",
+      funcionarioId: "501",
+    },
+    {
+      id: 501002,
+      apartamentoId: 5010,
+      apartamento: "501",
+      bairroApartamento: "Bela Vista",
+      descricao: "Tarefa Maria",
+      checkout: "2099-09-02",
+      horaCheckout: "11:00",
+      status: "Pendente",
+      funcionarioId: "502",
+    },
+    {
+      id: 501003,
+      apartamentoId: 5011,
+      apartamento: "502",
+      bairroApartamento: "Bela Vista",
+      descricao: "Tarefa sem responsavel",
+      checkout: "2099-09-03",
+      horaCheckout: "11:00",
+      status: "Pendente",
+      funcionarioId: "",
+    },
+  ];
+
+  const salvar = await requisicaoJson("/api/state", {
+    method: "PUT",
+    headers: cabecalho(master),
+    body: JSON.stringify({
+      ownerId: master.ownerId,
+      funcionarios,
+      apartamentos,
+      tarefas,
+    }),
+  });
+
+  assert.equal(salvar.resposta.status, 200, salvar.dados.erro);
+
+  const tokenDebora = "token-debora";
+  const tokenMaria = "token-maria";
+  const banco = new DatabaseSync(path.join(pastaTemporaria, "database.sqlite"));
+
+  try {
+    banco
+      .prepare(
+        "INSERT INTO prestador_sessoes (token_hash, funcionario_id) VALUES (?, ?)",
+      )
+      .run(hashCodigo(tokenDebora), "501");
+    banco
+      .prepare(
+        "INSERT INTO prestador_sessoes (token_hash, funcionario_id) VALUES (?, ?)",
+      )
+      .run(hashCodigo(tokenMaria), "502");
+  } finally {
+    banco.close();
+  }
+
+  const portalDebora = await requisicaoJson(
+    `/api/provider/portal?funcionarioId=501&token=${tokenDebora}`,
+  );
+  const portalMaria = await requisicaoJson(
+    `/api/provider/portal?funcionarioId=502&token=${tokenMaria}`,
+  );
+  const acessoCruzado = await requisicaoJson(
+    `/api/provider/portal?funcionarioId=502&token=${tokenDebora}`,
+  );
+
+  assert.equal(portalDebora.resposta.status, 200, portalDebora.dados.erro);
+  assert.deepEqual(
+    portalDebora.dados.tarefas.map((tarefa) => tarefa.id),
+    [501001],
+  );
+  assert.equal(portalMaria.resposta.status, 200, portalMaria.dados.erro);
+  assert.deepEqual(
+    portalMaria.dados.tarefas.map((tarefa) => tarefa.id),
+    [501002],
+  );
+  assert.equal(acessoCruzado.resposta.status, 401);
+});
