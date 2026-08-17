@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { calcularUrgencia } from "../utils/tarefas";
+import {
+  obterTarefasCalendarioPrestador,
+  obterTarefasPendentesPrestador,
+} from "../utils/portalPrestador";
 import SenhaPorta from "./SenhaPorta";
 import "./Dashboard.css";
 
@@ -538,15 +542,7 @@ function PortalPrestador({
 
   const dataHoje = obterHojeInput();
   const tarefasDoPrestador = useMemo(
-    () =>
-      tarefasBase
-        .filter(
-          (tarefa) =>
-            tarefa.status === "Pendente" &&
-            String(tarefa.funcionarioId) === String(prestadorId) &&
-            (!obterDataCheckout(tarefa) || obterDataCheckout(tarefa) >= dataHoje),
-        )
-        .sort(compararTarefas),
+    () => obterTarefasPendentesPrestador(tarefasBase, prestadorId, dataHoje),
     [dataHoje, prestadorId, tarefasBase],
   );
   const tarefasConcluidas = useMemo(
@@ -567,12 +563,16 @@ function PortalPrestador({
       ),
     [dataHoje, tarefasDoPrestador],
   );
+  const tarefasCalendario = useMemo(
+    () => obterTarefasCalendarioPrestador(tarefasBase, prestadorId, dataHoje),
+    [dataHoje, prestadorId, tarefasBase],
+  );
   const diasDoCalendario = useMemo(
-    () => montarDiasDoMes(mesCalendario, tarefasDoPrestador),
-    [mesCalendario, tarefasDoPrestador],
+    () => montarDiasDoMes(mesCalendario, tarefasCalendario),
+    [mesCalendario, tarefasCalendario],
   );
   const tarefasDaDataSelecionada = dataSelecionada
-    ? tarefasDoPrestador.filter(
+    ? tarefasCalendario.filter(
         (tarefa) => obterDataCheckout(tarefa) === dataSelecionada,
       )
     : [];
@@ -979,10 +979,19 @@ function PortalPrestador({
                         ).map((tarefa) => (
                           <strong
                             key={tarefa.id}
-                            className={tarefa.prioridade ? "priority" : ""}
+                            className={[
+                              tarefa.status === "Concluida" ? "completed" : "",
+                              tarefa.status !== "Concluida" && tarefa.prioridade
+                                ? "priority"
+                                : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
                             title={obterTituloTarefa(tarefa)}
                           >
-                            {obterTituloTarefa(tarefa)}
+                            {tarefa.status === "Concluida"
+                              ? `Concluida - ${obterTituloTarefa(tarefa)}`
+                              : obterTituloTarefa(tarefa)}
                           </strong>
                         ))}
                         {dia.tarefas.length > 3 && (
@@ -1027,7 +1036,7 @@ function PortalPrestador({
                 tarefasDaDataSelecionada.length ? (
                   <div className="provider-task-list compact">
                     {tarefasDaDataSelecionada.map((tarefa) =>
-                      renderizarCardTarefa(tarefa),
+                      renderizarCardTarefa(tarefa, tarefa.status === "Concluida"),
                     )}
                   </div>
                 ) : (

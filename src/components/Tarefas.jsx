@@ -318,6 +318,23 @@ function montarLinkWhatsapp(tarefasSelecionadas) {
   )}`;
 }
 
+export function obterTarefasWhatsappVisiveis(
+  tarefasFiltroDataVisiveis,
+  tarefasSelecionadasVisiveis,
+) {
+  if (!tarefasFiltroDataVisiveis.length && !tarefasSelecionadasVisiveis.length) {
+    return [];
+  }
+
+  return tarefasSelecionadasVisiveis;
+}
+
+export function obterRotuloEnvioWhatsapp(tarefasSelecionadasVisiveis) {
+  return tarefasSelecionadasVisiveis.length
+    ? "Enviar selecionadas no WhatsApp"
+    : "Selecione pelo menos uma tarefa para enviar.";
+}
+
 function encontrarFuncionario(funcionarios, funcionarioId) {
   return funcionarios.find(
     (funcionario) => String(funcionario.id) === String(funcionarioId),
@@ -481,9 +498,6 @@ function Tarefas({
       : dataInicioPeriodo
         ? `de ${formatarDataCompleta(dataInicioPeriodo)}`
         : "filtradas";
-  const linkWhatsappFiltroData = tarefasFiltroDataVisiveis.length
-    ? montarLinkWhatsapp(tarefasFiltroDataVisiveis)
-    : "";
   const gruposPrestadoresBase = [
     ...funcionariosResponsaveis.map((funcionario) => ({
       tipo: "funcionario",
@@ -527,8 +541,24 @@ function Tarefas({
   const idsTarefasVisiveis = tarefasPendentesVisiveisParaMassa.map((tarefa) =>
     String(tarefa.id),
   );
+  const tarefasPendentesVisiveisPorId = new Map(
+    tarefasPendentesVisiveisParaMassa.map((tarefa) => [String(tarefa.id), tarefa]),
+  );
   const tarefasSelecionadasVisiveis = tarefasSelecionadas.filter((id) =>
     idsTarefasVisiveis.includes(String(id)),
+  );
+  const tarefasSelecionadasVisiveisObjetos = tarefasSelecionadasVisiveis
+    .map((id) => tarefasPendentesVisiveisPorId.get(String(id)))
+    .filter(Boolean);
+  const tarefasWhatsappFiltroData = obterTarefasWhatsappVisiveis(
+    tarefasFiltroDataVisiveis,
+    tarefasSelecionadasVisiveisObjetos,
+  );
+  const linkWhatsappFiltroData = tarefasSelecionadasVisiveisObjetos.length
+    ? montarLinkWhatsapp(tarefasWhatsappFiltroData)
+    : "";
+  const rotuloEnvioWhatsapp = obterRotuloEnvioWhatsapp(
+    tarefasSelecionadasVisiveisObjetos,
   );
   const todasTarefasVisiveisSelecionadas =
     idsTarefasVisiveis.length > 0 &&
@@ -1030,23 +1060,29 @@ function Tarefas({
               : tarefasDoPeriodoSelecionado
             ).length ? (
               <>
-                {linkWhatsappFiltroData && (
+                {tarefasFiltroDataVisiveis.length > 0 && (
                   <div className="date-whatsapp-panel">
                     <div className="whatsapp-task-box compact">
                       <div>
                         <strong>Lista de tarefas</strong>
                         <p>
-                          {tarefasFiltroDataVisiveis.length} tarefa(s){" "}
+                          {tarefasWhatsappFiltroData.length} tarefa(s){" "}
                           {tituloPeriodoWhatsapp}.
                         </p>
                       </div>
-                      <a
-                        href={linkWhatsappFiltroData}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Enviar no WhatsApp
-                      </a>
+                      {linkWhatsappFiltroData ? (
+                        <a
+                          href={linkWhatsappFiltroData}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {rotuloEnvioWhatsapp}
+                        </a>
+                      ) : (
+                        <button type="button" disabled>
+                          {rotuloEnvioWhatsapp}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1143,9 +1179,18 @@ function Tarefas({
                   (tarefa) => obterDataCheckout(tarefa) === dataAmanha,
                 )
               : [];
+            const tarefasWhatsappFuncionario = obterTarefasWhatsappVisiveis(
+              tarefasAmanhaFuncionario,
+              tarefasSelecionadasVisiveisObjetos,
+            );
+            const rotuloWhatsappFuncionario = obterRotuloEnvioWhatsapp(
+              tarefasSelecionadasVisiveisObjetos,
+            );
             const linkWhatsapp =
-              grupo.funcionario && tarefasAmanhaFuncionario.length
-                ? montarLinkWhatsapp(tarefasAmanhaFuncionario)
+              grupo.funcionario &&
+              tarefasSelecionadasVisiveisObjetos.length &&
+              tarefasWhatsappFuncionario.length
+                ? montarLinkWhatsapp(tarefasWhatsappFuncionario)
                 : "";
 
             return (
@@ -1163,7 +1208,7 @@ function Tarefas({
                     <div>
                       <strong>Tarefas de amanha</strong>
                       <p>
-                        {tarefasAmanhaFuncionario.length} tarefa(s) para{" "}
+                        {tarefasWhatsappFuncionario.length} tarefa(s) para{" "}
                         {formatarDataCompleta(dataAmanha)}.
                       </p>
                     </div>
@@ -1173,11 +1218,13 @@ function Tarefas({
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        Enviar no WhatsApp
+                        {rotuloWhatsappFuncionario}
                       </a>
                     ) : (
                       <button type="button" disabled>
-                        Nada para enviar
+                        {tarefasAmanhaFuncionario.length
+                          ? rotuloWhatsappFuncionario
+                          : "Nada para enviar"}
                       </button>
                     )}
                   </div>

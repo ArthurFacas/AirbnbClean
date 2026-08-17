@@ -2825,6 +2825,11 @@
   color: #9a3412;
 }
 
+.provider-calendar-task-list strong.completed {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
 .provider-calendar-task-list .calendar-more-button {
   background: #e2e8f0;
   color: #334155;

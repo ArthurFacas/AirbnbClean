@@ -6,6 +6,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 
 import { parsearTodasReservasIcal } from "./ical.js";
+import {
+  obterTarefasCalendarioPrestador,
+  obterTarefasPendentesPrestador,
+} from "./portalPrestador.js";
 
 let viteServer;
 let appModule;
@@ -583,6 +587,266 @@ test("mensagem de WhatsApp aplica hospedes, comentarios reais, comentarios tecni
   assert.equal(
     mensagem.match(/Prioridade: Check-in e Check-out no mesmo dia/g)?.length,
     1,
+  );
+});
+
+test("WhatsApp envia somente 3 tarefas selecionadas entre 7 visiveis", () => {
+  const tarefasFiltradas = Array.from({ length: 7 }, (_, indice) => ({
+    id: indice + 1,
+    apartamento: String(100 + indice + 1),
+    predioApartamento: "Clean Host",
+    checkout: "2026-08-18",
+    status: "Pendente",
+  }));
+  const selecionadas = [
+    tarefasFiltradas[1],
+    tarefasFiltradas[3],
+    tarefasFiltradas[6],
+  ];
+  const tarefasWhatsapp = tarefasModule.obterTarefasWhatsappVisiveis(
+    tarefasFiltradas,
+    selecionadas,
+  );
+  const mensagem = tarefasModule.montarMensagemWhatsappTarefas(tarefasWhatsapp);
+
+  assert.deepEqual(
+    tarefasWhatsapp.map((tarefa) => tarefa.id),
+    [2, 4, 7],
+  );
+  assert.equal(mensagem.match(/\d+\. \*/g)?.length, 3);
+  assert.match(mensagem, /Clean Host - 102/);
+  assert.match(mensagem, /Clean Host - 104/);
+  assert.match(mensagem, /Clean Host - 107/);
+  assert.doesNotMatch(mensagem, /Clean Host - 101/);
+  assert.doesNotMatch(mensagem, /Clean Host - 103/);
+  assert.doesNotMatch(mensagem, /Clean Host - 105/);
+  assert.doesNotMatch(mensagem, /Clean Host - 106/);
+  assert.deepEqual(
+    tarefasModule.obterTarefasWhatsappVisiveis(tarefasFiltradas, selecionadas),
+    selecionadas,
+  );
+});
+
+test("WhatsApp sem tarefas selecionadas nao envia todas silenciosamente", () => {
+  const tarefasFiltradas = Array.from({ length: 7 }, (_, indice) => ({
+    id: indice + 1,
+    apartamento: String(200 + indice + 1),
+    predioApartamento: "Clean Host",
+    checkout: "2026-08-18",
+    status: "Pendente",
+  }));
+  const tarefasWhatsapp = tarefasModule.obterTarefasWhatsappVisiveis(
+    tarefasFiltradas,
+    [],
+  );
+
+  assert.deepEqual(tarefasWhatsapp, []);
+  assert.equal(
+    tarefasModule.obterRotuloEnvioWhatsapp([]),
+    "Selecione pelo menos uma tarefa para enviar.",
+  );
+  assert.equal(
+    tarefasModule.montarMensagemWhatsappTarefas(tarefasWhatsapp),
+    "*LISTA DE TAREFAS - LIMPEZA*\n\nNenhuma tarefa selecionada.",
+  );
+  assert.doesNotMatch(
+    tarefasModule.montarMensagemWhatsappTarefas(tarefasWhatsapp),
+    /Clean Host - 20/,
+  );
+  assert.equal(
+    tarefasModule.obterRotuloEnvioWhatsapp([tarefasFiltradas[0]]),
+    "Enviar selecionadas no WhatsApp",
+  );
+});
+
+test("portal do prestador mostra pendentes antigas do responsavel na data original", () => {
+  const tarefas = [
+    {
+      id: 1,
+      status: "Pendente",
+      funcionarioId: "501",
+      checkout: "2026-08-16",
+      apartamento: "101",
+    },
+    {
+      id: 2,
+      status: "Pendente",
+      funcionarioId: "501",
+      checkout: "2026-08-12",
+      apartamento: "102",
+    },
+    {
+      id: 3,
+      status: "Pendente",
+      funcionarioId: "501",
+      checkout: "2026-07-28",
+      apartamento: "103",
+    },
+    {
+      id: 4,
+      status: "Pendente",
+      funcionarioId: "501",
+      checkout: "2026-07-18",
+      apartamento: "104",
+    },
+    {
+      id: 5,
+      status: "Pendente",
+      funcionarioId: "501",
+      checkout: "2026-07-17",
+      apartamento: "105",
+    },
+  ];
+
+  assert.deepEqual(
+    obterTarefasPendentesPrestador(tarefas, "501", "2026-08-17").map(
+      (tarefa) => [tarefa.id, tarefa.checkout],
+    ),
+    [
+      [4, "2026-07-18"],
+      [3, "2026-07-28"],
+      [2, "2026-08-12"],
+      [1, "2026-08-16"],
+    ],
+  );
+  assert.ok(
+    obterTarefasPendentesPrestador(tarefas, "501", "2026-08-17").every(
+      (tarefa) => tarefa.checkout !== "2026-08-17",
+    ),
+  );
+});
+
+test("portal do prestador filtra por funcionario_id e ignora bairro ou tarefas sem responsavel", () => {
+  const tarefas = [
+    {
+      id: 1,
+      status: "Pendente",
+      funcionarioId: "501",
+      bairroApartamento: "Centro",
+      checkout: "2026-08-16",
+      apartamento: "101",
+    },
+    {
+      id: 2,
+      status: "Pendente",
+      funcionarioId: "502",
+      bairroApartamento: "Centro",
+      checkout: "2026-08-16",
+      apartamento: "102",
+    },
+    {
+      id: 3,
+      status: "Pendente",
+      funcionarioId: "",
+      bairroApartamento: "Centro",
+      checkout: "2026-08-16",
+      apartamento: "103",
+    },
+    {
+      id: 4,
+      status: "Pendente",
+      bairroApartamento: "Centro",
+      checkout: "2026-08-16",
+      apartamento: "104",
+    },
+  ];
+
+  assert.deepEqual(
+    obterTarefasPendentesPrestador(tarefas, "501", "2026-08-17").map(
+      (tarefa) => tarefa.id,
+    ),
+    [1],
+  );
+  assert.deepEqual(
+    obterTarefasCalendarioPrestador(tarefas, "501", "2026-08-17").map(
+      (tarefa) => tarefa.id,
+    ),
+    [1],
+  );
+});
+
+test("portal do prestador mantem concluida na data original e fora das pendentes", async () => {
+  const tarefas = [
+    {
+      id: 1,
+      status: "Concluida",
+      funcionarioId: "501",
+      checkout: "2026-08-02",
+      concluidaEm: "2026-08-17T12:00:00.000Z",
+      apartamento: "101",
+    },
+    {
+      id: 2,
+      status: "Pendente",
+      funcionarioId: "501",
+      checkout: "2026-08-16",
+      apartamento: "102",
+    },
+  ];
+  const dashboardCssSource = await readFile(
+    new URL("../components/Dashboard.css", import.meta.url),
+    "utf8",
+  );
+
+  assert.deepEqual(
+    obterTarefasPendentesPrestador(tarefas, "501", "2026-08-17").map(
+      (tarefa) => tarefa.id,
+    ),
+    [2],
+  );
+  assert.deepEqual(
+    obterTarefasCalendarioPrestador(tarefas, "501", "2026-08-17").map(
+      (tarefa) => [tarefa.id, tarefa.checkout, tarefa.status],
+    ),
+    [
+      [1, "2026-08-02", "Concluida"],
+      [2, "2026-08-16", "Pendente"],
+    ],
+  );
+  assert.match(
+    dashboardCssSource,
+    /\.provider-calendar-task-list strong\.completed/,
+  );
+});
+
+test("portal do prestador preserva pendente antiga apos reload dos mesmos dados", () => {
+  const tarefas = [
+    {
+      id: 1,
+      status: "Pendente",
+      funcionarioId: "501",
+      checkout: "2026-08-16",
+      apartamento: "101",
+    },
+    {
+      id: 2,
+      status: "Pendente",
+      funcionarioId: "501",
+      checkout: "2026-07-28",
+      apartamento: "102",
+    },
+  ];
+  const antesDoReload = obterTarefasPendentesPrestador(
+    tarefas,
+    "501",
+    "2026-08-17",
+  );
+  const depoisDoReload = obterTarefasPendentesPrestador(
+    JSON.parse(JSON.stringify(tarefas)),
+    "501",
+    "2026-08-17",
+  );
+
+  assert.deepEqual(
+    antesDoReload.map((tarefa) => [tarefa.id, tarefa.checkout]),
+    [
+      [2, "2026-07-28"],
+      [1, "2026-08-16"],
+    ],
+  );
+  assert.deepEqual(
+    depoisDoReload.map((tarefa) => [tarefa.id, tarefa.checkout]),
+    antesDoReload.map((tarefa) => [tarefa.id, tarefa.checkout]),
   );
 });
 
