@@ -959,6 +959,31 @@
   background: #eff6ff;
 }
 
+.provider-filter-select {
+  display: grid;
+  gap: 4px;
+  min-width: 190px;
+}
+
+.provider-filter-select span {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.provider-filter-select select {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #172033;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 7px 10px;
+}
+
 .calendar-weekdays,
 .calendar-month-grid {
   display: grid;
@@ -1217,6 +1242,11 @@
   color: #64748b;
   font-size: 13px;
   font-weight: 800;
+}
+
+.date-filter-status .provider-filter-select {
+  margin-top: 6px;
+  width: min(100%, 260px);
 }
 
 .date-filter-calendar {
@@ -3851,6 +3881,10 @@ button:disabled,
   .calendar-header-controls {
     flex-wrap: wrap;
     width: 100%;
+  }
+
+  .calendar-header-controls .provider-filter-select {
+    flex: 1 1 190px;
   }
 
   .calendar-header-controls input {

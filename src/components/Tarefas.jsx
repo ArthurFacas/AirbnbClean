@@ -341,6 +341,34 @@ function encontrarFuncionario(funcionarios, funcionarioId) {
   );
 }
 
+function tarefaSemResponsavelValido(tarefa, idsFuncionariosResponsaveis) {
+  return (
+    tarefa.status === "Pendente" &&
+    (!tarefa.funcionarioId ||
+      !idsFuncionariosResponsaveis.has(String(tarefa.funcionarioId)))
+  );
+}
+
+export function filtrarTarefasPorPrestadorVisual(
+  tarefas,
+  prestadorSelecionado,
+  idsFuncionariosResponsaveis = new Set(),
+) {
+  if (!prestadorSelecionado) {
+    return tarefas;
+  }
+
+  if (prestadorSelecionado === "sem-responsavel") {
+    return tarefas.filter((tarefa) =>
+      tarefaSemResponsavelValido(tarefa, idsFuncionariosResponsaveis),
+    );
+  }
+
+  return tarefas.filter(
+    (tarefa) => String(tarefa.funcionarioId) === String(prestadorSelecionado),
+  );
+}
+
 function deveAbrirSemResponsavelPorUrl() {
   if (typeof window === "undefined") {
     return false;
@@ -386,6 +414,7 @@ function Tarefas({
   const [prestadorSelecionado, setPrestadorSelecionado] = useState(
     abrirSemResponsavel ? "sem-responsavel" : "",
   );
+  const [prestadorFiltroVisual, setPrestadorFiltroVisual] = useState("");
   const [dataSelecionada, setDataSelecionada] = useState("");
   const [dataAbertaPeloCalendario, setDataAbertaPeloCalendario] =
     useState(false);
@@ -436,27 +465,38 @@ function Tarefas({
     (tarefa) => obterDataCheckout(tarefa) === dataAmanha,
   ).length;
   const tarefasSemResponsavel = tarefasPendentes.filter(
-    (tarefa) =>
-      !tarefa.funcionarioId ||
-      !idsFuncionariosResponsaveis.has(String(tarefa.funcionarioId)),
+    (tarefa) => tarefaSemResponsavelValido(tarefa, idsFuncionariosResponsaveis),
   ).length;
   const tarefasPrioritarias = tarefasPendentes.filter(
     (tarefa) => tarefa.prioridade,
   ).length;
+  const tarefasPendentesFiltradasPorPrestador =
+    filtrarTarefasPorPrestadorVisual(
+      tarefasPendentes,
+      prestadorFiltroVisual,
+      idsFuncionariosResponsaveis,
+    );
+  const tarefasCalendarioFiltradasPorPrestador =
+    filtrarTarefasPorPrestadorVisual(
+      tarefasCalendario,
+      prestadorFiltroVisual,
+      idsFuncionariosResponsaveis,
+    );
   const diasDoCalendario = montarDiasDoMes(
     mesCalendario,
-    tarefasCalendario,
+    tarefasCalendarioFiltradasPorPrestador,
   );
   const diasDoFiltroData = montarDiasDoMes(
     mesFiltroData,
-    tarefasPendentes,
+    tarefasPendentesFiltradasPorPrestador,
   );
   const tarefasDaDataSelecionada = dataSelecionada
-    ? (dataAbertaPeloCalendario ? tarefasCalendario : tarefasPendentes).filter(
-        (tarefa) => obterDataCheckout(tarefa) === dataSelecionada,
-      )
+    ? (dataAbertaPeloCalendario
+        ? tarefasCalendarioFiltradasPorPrestador
+        : tarefasPendentesFiltradasPorPrestador
+      ).filter((tarefa) => obterDataCheckout(tarefa) === dataSelecionada)
     : [];
-  const tarefasDoPeriodoSelecionado = tarefasPendentes.filter((tarefa) => {
+  const tarefasDoPeriodoSelecionado = tarefasPendentesFiltradasPorPrestador.filter((tarefa) => {
     const dataCheckout = obterDataCheckout(tarefa);
 
     if (!dataCheckout) {
@@ -516,9 +556,7 @@ function Tarefas({
       titulo: "Sem responsavel",
       subtitulo: "Tarefas aguardando atribuicao",
       tarefas: tarefasPendentes.filter(
-        (tarefa) =>
-          !tarefa.funcionarioId ||
-          !idsFuncionariosResponsaveis.has(String(tarefa.funcionarioId)),
+        (tarefa) => tarefaSemResponsavelValido(tarefa, idsFuncionariosResponsaveis),
       ),
     },
   ];
@@ -709,6 +747,27 @@ function Tarefas({
     );
   }
 
+  function renderizarFiltroPrestadorVisual(id) {
+    return (
+      <label className="provider-filter-select" htmlFor={id}>
+        <span>Prestador</span>
+        <select
+          id={id}
+          value={prestadorFiltroVisual}
+          onChange={(event) => setPrestadorFiltroVisual(event.target.value)}
+        >
+          <option value="">Todos os prestadores</option>
+          <option value="sem-responsavel">Sem responsavel</option>
+          {funcionariosResponsaveis.map((funcionario) => (
+            <option key={funcionario.id} value={funcionario.id}>
+              {funcionario.nome}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
   return (
     <div className="content-page tasks-page">
       <div className="view-switcher" aria-label="Visualizacao das tarefas">
@@ -858,6 +917,7 @@ function Tarefas({
                 onChange={(event) => setMesCalendario(event.target.value)}
                 aria-label="Escolher mes"
               />
+              {renderizarFiltroPrestadorVisual("calendar-provider-filter")}
             </div>
           </div>
 
@@ -978,6 +1038,7 @@ function Tarefas({
                       : "Dia selecionado"
                     : "Clique em um dia ou em duas datas para intervalo"}
                 </span>
+                {renderizarFiltroPrestadorVisual("date-provider-filter")}
               </div>
 
               <div className="date-filter-calendar">
