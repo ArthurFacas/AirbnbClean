@@ -508,7 +508,12 @@ function PortalPrestador({
         const resposta = await fetch(
           `/api/provider/portal?funcionarioId=${encodeURIComponent(
             prestadorId,
-          )}&token=${encodeURIComponent(tokenPrestador)}`,
+          )}`,
+          {
+            headers: {
+              Authorization: `Bearer ${tokenPrestador}`,
+            },
+          },
         );
         const dados = await resposta.json();
 
@@ -615,12 +620,12 @@ function PortalPrestador({
       const resposta = await fetch("/api/provider/complete", {
         method: "POST",
         headers: {
+          Authorization: `Bearer ${tokenPrestador}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           funcionarioId: prestadorId,
           tarefaId,
-          token: tokenPrestador,
         }),
       });
       const dados = await resposta.json();

@@ -27,6 +27,8 @@ const RATE_LIMITS = {
   chaveMasterGeracao: { limite: 10, janelaMs: 60 * 60 * 1000 },
   convitePublico: { limite: 10, janelaMs: 15 * 60 * 1000 },
 };
+const PRODUCAO = process.env.NODE_ENV === "production" || Boolean(process.env.RENDER);
+const LIMITE_BODY_BYTES = 5 * 1024 * 1024;
 const DATA_DIR =
   process.env.DATA_DIR ||
   (process.env.RENDER ? "/var/data/cleanhost" : path.join(__dirname, "data"));
@@ -34,8 +36,29 @@ const DB_FILE =
   process.env.DATABASE_FILE || path.join(DATA_DIR, "database.sqlite");
 const DIST_DIR = path.join(__dirname, "dist");
 const SENHA_PORTA_PREFIXO = "enc:v1";
+const CLEANHOST_SECRET_DESENVOLVIMENTO = "cleanhost-local-senha-porta";
+
+function obterCleanhostSecret() {
+  const segredo = String(process.env.CLEANHOST_SECRET || "").trim();
+
+  if (PRODUCAO) {
+    if (!segredo || segredo.length < 32 || segredo === CLEANHOST_SECRET_DESENVOLVIMENTO) {
+      throw new Error(
+        "CLEANHOST_SECRET e obrigatorio em producao e deve ter pelo menos 32 caracteres.",
+      );
+    }
+
+    return segredo;
+  }
+
+  return segredo || CLEANHOST_SECRET_DESENVOLVIMENTO;
+}
+
 const CHAVE_SENHA_PORTA = createHash("sha256")
-  .update(process.env.CLEANHOST_SECRET || "cleanhost-local-senha-porta")
+  .update(obterCleanhostSecret())
+  .digest();
+const CHAVE_SENHA_PORTA_LEGADA = createHash("sha256")
+  .update(CLEANHOST_SECRET_DESENVOLVIMENTO)
   .digest();
 
 const PERMISSOES_OPERACIONAIS_PADRAO = [
@@ -800,23 +823,33 @@ function descriptografarSenhaPorta(valor) {
     return "";
   }
 
-  try {
-    const [ivHex, tagHex, conteudoHex] = partes;
-    const decipher = createDecipheriv(
-      "aes-256-gcm",
-      CHAVE_SENHA_PORTA,
-      Buffer.from(ivHex, "hex"),
-    );
+  const [ivHex, tagHex, conteudoHex] = partes;
+  const chaves = [CHAVE_SENHA_PORTA];
 
-    decipher.setAuthTag(Buffer.from(tagHex, "hex"));
-
-    return Buffer.concat([
-      decipher.update(Buffer.from(conteudoHex, "hex")),
-      decipher.final(),
-    ]).toString("utf8");
-  } catch {
-    return "";
+  if (!CHAVE_SENHA_PORTA.equals(CHAVE_SENHA_PORTA_LEGADA)) {
+    chaves.push(CHAVE_SENHA_PORTA_LEGADA);
   }
+
+  for (const chave of chaves) {
+    try {
+      const decipher = createDecipheriv(
+        "aes-256-gcm",
+        chave,
+        Buffer.from(ivHex, "hex"),
+      );
+
+      decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+
+      return Buffer.concat([
+        decipher.update(Buffer.from(conteudoHex, "hex")),
+        decipher.final(),
+      ]).toString("utf8");
+    } catch {
+      // Tenta a chave legada somente para preservar leitura de dados antigos.
+    }
+  }
+
+  return "";
 }
 
 function protegerSenhaPorta(dados) {
@@ -2626,13 +2659,83 @@ async function concluirTarefaPrestador(dados) {
   return { id: tarefaId, status: "Concluida", concluidaEm };
 }
 
-function enviarJson(resposta, status, corpo) {
-  resposta.writeHead(status, {
-    "Access-Control-Allow-Origin": "*",
+function obterOrigemRequisicao(requisicao) {
+  const protocolo = String(
+    requisicao?.headers?.["x-forwarded-proto"] ||
+      (PRODUCAO ? "https" : "http"),
+  )
+    .split(",")[0]
+    .trim();
+  const host = String(requisicao?.headers?.host || "").trim();
+
+  return host ? `${protocolo}://${host}` : "";
+}
+
+function origemLocalDesenvolvimento(origem) {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(
+    origem,
+  );
+}
+
+function obterOrigemCorsPermitida(requisicao) {
+  const origem = String(requisicao?.headers?.origin || "").trim();
+
+  if (!origem) {
+    return "";
+  }
+
+  const origensConfiguradas = String(process.env.CLEANHOST_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((valor) => valor.trim())
+    .filter(Boolean);
+  const origensPermitidas = new Set([
+    obterOrigemRequisicao(requisicao),
+    ...origensConfiguradas,
+  ]);
+
+  if (origensPermitidas.has(origem)) {
+    return origem;
+  }
+
+  if (!PRODUCAO && origemLocalDesenvolvimento(origem)) {
+    return origem;
+  }
+
+  return "";
+}
+
+function criarHeadersResposta(resposta, extras = {}) {
+  const requisicao = resposta.requisicao;
+  const origemPermitida = obterOrigemCorsPermitida(requisicao);
+  const headers = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Content-Type": "application/json; charset=utf-8",
-  });
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    ...extras,
+  };
+
+  if (origemPermitida) {
+    headers["Access-Control-Allow-Origin"] = origemPermitida;
+    headers.Vary = "Origin";
+  }
+
+  if (PRODUCAO) {
+    headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+  }
+
+  return headers;
+}
+
+function enviarJson(resposta, status, corpo) {
+  resposta.writeHead(
+    status,
+    criarHeadersResposta(resposta, {
+      "Content-Type": "application/json; charset=utf-8",
+    }),
+  );
   resposta.end(JSON.stringify(corpo));
 }
 
@@ -2642,24 +2745,48 @@ function enviarTexto(
   texto,
   tipo = "text/plain; charset=utf-8",
 ) {
-  resposta.writeHead(status, {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Content-Type": tipo,
-  });
+  resposta.writeHead(
+    status,
+    criarHeadersResposta(resposta, {
+      "Content-Type": tipo,
+    }),
+  );
   resposta.end(texto);
 }
 
 function lerCorpo(requisicao) {
   return new Promise((resolve, reject) => {
     let corpo = "";
+    let tamanho = 0;
+    let rejeitado = false;
 
     requisicao.on("data", (parte) => {
+      if (rejeitado) {
+        return;
+      }
+
+      tamanho += parte.length;
+
+      if (tamanho > LIMITE_BODY_BYTES) {
+        rejeitado = true;
+        const erro = new Error("Payload muito grande.");
+        erro.status = 413;
+        reject(erro);
+        return;
+      }
+
       corpo += parte;
     });
-    requisicao.on("end", () => resolve(corpo));
-    requisicao.on("error", reject);
+    requisicao.on("end", () => {
+      if (!rejeitado) {
+        resolve(corpo);
+      }
+    });
+    requisicao.on("error", (erro) => {
+      if (!rejeitado) {
+        reject(erro);
+      }
+    });
   });
 }
 
@@ -2757,13 +2884,13 @@ function limparRateLimit(nome, chave) {
 }
 
 function enviarRateLimit(resposta, retryAfter) {
-  resposta.writeHead(429, {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Retry-After": String(Math.max(1, retryAfter)),
-    "Content-Type": "application/json; charset=utf-8",
-  });
+  resposta.writeHead(
+    429,
+    criarHeadersResposta(resposta, {
+      "Retry-After": String(Math.max(1, retryAfter)),
+      "Content-Type": "application/json; charset=utf-8",
+    }),
+  );
   resposta.end(JSON.stringify({ erro: RATE_LIMIT_MENSAGEM }));
 }
 
@@ -2787,18 +2914,28 @@ async function servirArquivo(requisicao, resposta) {
 
   try {
     await stat(arquivo);
-    resposta.writeHead(200, {
-      "Content-Type":
-        tipos[path.extname(arquivo)] || "application/octet-stream",
-    });
+    resposta.writeHead(
+      200,
+      criarHeadersResposta(resposta, {
+        "Content-Type":
+          tipos[path.extname(arquivo)] || "application/octet-stream",
+      }),
+    );
     createReadStream(arquivo).pipe(resposta);
   } catch {
-    resposta.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    resposta.writeHead(
+      404,
+      criarHeadersResposta(resposta, {
+        "Content-Type": "text/plain; charset=utf-8",
+      }),
+    );
     resposta.end("Arquivo nao encontrado.");
   }
 }
 
 const servidor = createServer(async (requisicao, resposta) => {
+  resposta.requisicao = requisicao;
+
   if (requisicao.method === "OPTIONS") {
     enviarJson(resposta, 204, {});
     return;
@@ -2807,15 +2944,23 @@ const servidor = createServer(async (requisicao, resposta) => {
   if (requisicao.url?.startsWith("/api/health")) {
     try {
       await garantirBanco();
-      enviarJson(resposta, 200, {
-        ok: true,
-        databaseFile: DB_FILE,
-        persistentDiskPath: DATA_DIR,
-        render: Boolean(process.env.RENDER),
-      });
+      enviarJson(
+        resposta,
+        200,
+        PRODUCAO
+          ? { ok: true, database: "accessible" }
+          : {
+              ok: true,
+              database: "accessible",
+              databaseFile: DB_FILE,
+              persistentDiskPath: DATA_DIR,
+              render: Boolean(process.env.RENDER),
+            },
+      );
     } catch {
       enviarJson(resposta, 500, {
         ok: false,
+        database: "unavailable",
         erro: "Banco indisponivel.",
       });
     }
@@ -3417,9 +3562,7 @@ const servidor = createServer(async (requisicao, resposta) => {
       }
 
       const funcionarioId = url.searchParams.get("funcionarioId");
-      const token =
-        url.searchParams.get("token") ||
-        requisicao.headers.authorization?.replace(/^Bearer\s+/i, "");
+      const token = requisicao.headers.authorization?.replace(/^Bearer\s+/i, "");
 
       if (!validarSessaoPrestador(funcionarioId, token)) {
         enviarJson(resposta, 401, {
@@ -3549,9 +3692,12 @@ const servidor = createServer(async (requisicao, resposta) => {
         return;
       }
 
-      const tarefa = await concluirTarefaPrestador(
-        JSON.parse(await lerCorpo(requisicao)),
-      );
+      const corpo = JSON.parse(await lerCorpo(requisicao));
+      const token = requisicao.headers.authorization?.replace(/^Bearer\s+/i, "");
+      const tarefa = await concluirTarefaPrestador({
+        ...corpo,
+        token,
+      });
       enviarJson(resposta, 200, { tarefa });
     } catch (erro) {
       enviarJson(resposta, erro.status || 500, {

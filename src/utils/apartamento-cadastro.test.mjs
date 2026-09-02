@@ -439,16 +439,20 @@ test("portal do prestador isola tarefas por funcionario_id e ignora bairro", asy
   }
 
   const portalDebora = await requisicaoJson(
-    `/api/provider/portal?funcionarioId=501&token=${tokenDebora}`,
+    "/api/provider/portal?funcionarioId=501",
+    { headers: { Authorization: `Bearer ${tokenDebora}` } },
   );
   const portalMaria = await requisicaoJson(
-    `/api/provider/portal?funcionarioId=502&token=${tokenMaria}`,
+    "/api/provider/portal?funcionarioId=502",
+    { headers: { Authorization: `Bearer ${tokenMaria}` } },
   );
   const portalFreelancer = await requisicaoJson(
-    `/api/provider/portal?funcionarioId=503&token=${tokenFreelancer}`,
+    "/api/provider/portal?funcionarioId=503",
+    { headers: { Authorization: `Bearer ${tokenFreelancer}` } },
   );
   const acessoCruzado = await requisicaoJson(
-    `/api/provider/portal?funcionarioId=502&token=${tokenDebora}`,
+    "/api/provider/portal?funcionarioId=502",
+    { headers: { Authorization: `Bearer ${tokenDebora}` } },
   );
 
   assert.equal(portalDebora.resposta.status, 200, portalDebora.dados.erro);
