@@ -44,6 +44,16 @@ function criarApartamento(campos = {}) {
   };
 }
 
+function obterDataRelativa(dias) {
+  const valor = new Date();
+  valor.setDate(valor.getDate() + dias);
+  return [
+    valor.getFullYear(),
+    String(valor.getMonth() + 1).padStart(2, "0"),
+    String(valor.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 test("reserva com mesmo UID e checkout alterado atualiza uma unica tarefa preservando dados manuais e status", () => {
   const apartamento = criarApartamento();
   const tarefaExistente = {
@@ -394,20 +404,23 @@ test("calendario inclui concluidas recentes, marca visualmente e nao as trata co
     {
       id: 1,
       status: "Concluida",
-      checkout: "2026-09-03",
-      concluidaEm: "2026-09-03T10:00:00.000Z",
+      checkout: obterDataRelativa(0),
+      concluidaEm: `${obterDataRelativa(0)}T10:00:00.000Z`,
       apartamento: "706",
       predioApartamento: "Zyz Centro",
     },
     {
       id: 2,
       status: "Pendente",
-      checkout: "2026-09-04",
+      checkout: obterDataRelativa(1),
       apartamento: "601",
       predioApartamento: "Zyz Centro",
     },
   ];
-  const calendario = tarefasModule.obterTarefasCalendario(tarefas, "2026-09-03");
+  const calendario = tarefasModule.obterTarefasCalendario(
+    tarefas,
+    obterDataRelativa(0),
+  );
   const pendentes = tarefas.filter((tarefa) => tarefa.status === "Pendente");
   const html = renderToStaticMarkup(
     React.createElement(tarefasModule.default, {
@@ -431,54 +444,56 @@ test("calendario mantem tarefas antigas na data real de checkout sem duplicar ou
     {
       id: 1,
       status: "Pendente",
-      checkout: "2026-09-05",
+      checkout: obterDataRelativa(-1),
       apartamento: "101",
       predioApartamento: "Clean Host",
     },
     {
       id: 2,
       status: "Concluida",
-      checkout: "2026-09-05",
-      concluidaEm: "2026-09-06T09:00:00.000Z",
+      checkout: obterDataRelativa(-1),
+      concluidaEm: `${obterDataRelativa(0)}T09:00:00.000Z`,
       apartamento: "102",
       predioApartamento: "Clean Host",
     },
     {
       id: 3,
       status: "Pendente",
-      checkout: "2026-08-17",
+      checkout: obterDataRelativa(-20),
       apartamento: "103",
       predioApartamento: "Clean Host",
     },
     {
       id: 4,
       status: "Pendente",
-      checkout: "2026-08-06",
+      checkout: obterDataRelativa(-31),
       apartamento: "104",
       predioApartamento: "Clean Host",
     },
     {
       id: 5,
       status: "Pendente",
-      checkout: "2026-09-06",
+      checkout: obterDataRelativa(0),
       apartamento: "105",
       predioApartamento: "Clean Host",
     },
     {
       id: 6,
       status: "Pendente",
-      checkout: "2026-09-12",
+      checkout: obterDataRelativa(6),
       apartamento: "106",
       predioApartamento: "Clean Host",
     },
   ];
-  const calendario = tarefasModule.obterTarefasCalendario(tarefas, "2026-09-06");
+  const hoje = obterDataRelativa(0);
+  const ontem = obterDataRelativa(-1);
+  const calendario = tarefasModule.obterTarefasCalendario(tarefas, hoje);
   const idsCalendario = calendario.map((tarefa) => tarefa.id);
   const tarefasOntem = calendario.filter(
-    (tarefa) => tarefasModule.obterDataCheckout(tarefa) === "2026-09-05",
+    (tarefa) => tarefasModule.obterDataCheckout(tarefa) === ontem,
   );
   const tarefasHoje = calendario.filter(
-    (tarefa) => tarefasModule.obterDataCheckout(tarefa) === "2026-09-06",
+    (tarefa) => tarefasModule.obterDataCheckout(tarefa) === hoje,
   );
   const html = renderToStaticMarkup(
     React.createElement(tarefasModule.default, {
@@ -499,7 +514,7 @@ test("calendario mantem tarefas antigas na data real de checkout sem duplicar ou
   assert.ok(tarefasHoje.every((tarefa) => tarefa.id !== 2));
   assert.ok(calendario.some((tarefa) => tarefa.id === 3));
   assert.ok(calendario.every((tarefa) => tarefa.id !== 4));
-  assert.equal(calendario.find((tarefa) => tarefa.id === 1)?.checkout, "2026-09-05");
+  assert.equal(calendario.find((tarefa) => tarefa.id === 1)?.checkout, ontem);
   assert.match(html, /Clean Host - 101/);
   assert.match(html, /class="completed"/);
   assert.match(html, /Concluida - Clean Host - 102/);
@@ -656,6 +671,101 @@ test("WhatsApp sem tarefas selecionadas nao envia todas silenciosamente", () => 
   assert.equal(
     tarefasModule.obterRotuloEnvioWhatsapp([tarefasFiltradas[0]]),
     "Enviar selecionadas no WhatsApp",
+  );
+});
+
+test("Por data disponibiliza pendencias dos ultimos 30 dias sem alterar checkout", () => {
+  const hoje = new Date();
+  const data = (diasAtras) => {
+    const valor = new Date(hoje);
+    valor.setDate(valor.getDate() - diasAtras);
+    return [
+      valor.getFullYear(),
+      String(valor.getMonth() + 1).padStart(2, "0"),
+      String(valor.getDate()).padStart(2, "0"),
+    ].join("-");
+  };
+  const tarefas = [1, 2, 20, 30, 31].map((diasAtras) => ({
+    id: diasAtras,
+    apartamento: String(diasAtras),
+    checkout: data(diasAtras),
+    status: "Pendente",
+  }));
+  tarefas.push({
+    id: 32,
+    apartamento: "concluida antiga",
+    checkout: data(20),
+    status: "Concluida",
+  });
+  const disponiveis = tarefasModule.obterTarefasDisponiveisPorData(
+    tarefas,
+    data(0),
+  );
+
+  assert.deepEqual(
+    disponiveis.map((tarefa) => tarefa.id),
+    [30, 20, 2, 1],
+  );
+  assert.equal(disponiveis.find((tarefa) => tarefa.id === 1).checkout, data(1));
+  assert.equal(disponiveis.filter((tarefa) => tarefa.id === 1).length, 1);
+});
+
+test("WhatsApp da visao Por data inclui somente as pendencias antigas e futuras selecionadas", () => {
+  const hoje = new Date();
+  const data = (deslocamento) => {
+    const valor = new Date(hoje);
+    valor.setDate(valor.getDate() + deslocamento);
+    return [
+      valor.getFullYear(),
+      String(valor.getMonth() + 1).padStart(2, "0"),
+      String(valor.getDate()).padStart(2, "0"),
+    ].join("-");
+  };
+  const pendenciaAntiga = {
+    id: 91,
+    apartamento: "901",
+    predioApartamento: "Clean Host",
+    checkout: data(-20),
+    status: "Pendente",
+  };
+  const tarefaAmanha = {
+    id: 92,
+    apartamento: "902",
+    predioApartamento: "Clean Host",
+    checkout: data(1),
+    status: "Pendente",
+  };
+  const visiveis = [pendenciaAntiga, tarefaAmanha];
+  const somenteAntiga = tarefasModule.obterTarefasWhatsappVisiveis(
+    visiveis,
+    [pendenciaAntiga],
+  );
+  const selecionadas = tarefasModule.obterTarefasWhatsappVisiveis(visiveis, [
+    pendenciaAntiga,
+    tarefaAmanha,
+  ]);
+  const nenhumaSelecionada = tarefasModule.obterTarefasWhatsappVisiveis(
+    visiveis,
+    [],
+  );
+
+  assert.match(
+    tarefasModule.montarMensagemWhatsappTarefas(somenteAntiga),
+    /Clean Host - 901/,
+  );
+  assert.doesNotMatch(
+    tarefasModule.montarMensagemWhatsappTarefas(somenteAntiga),
+    /Clean Host - 902/,
+  );
+  assert.equal(
+    tarefasModule.montarMensagemWhatsappTarefas(selecionadas).match(/\d+\. \*/g)
+      ?.length,
+    2,
+  );
+  assert.deepEqual(nenhumaSelecionada, []);
+  assert.doesNotMatch(
+    tarefasModule.montarMensagemWhatsappTarefas(nenhumaSelecionada),
+    /Clean Host - 901|Clean Host - 902/,
   );
 });
 

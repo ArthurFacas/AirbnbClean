@@ -120,6 +120,23 @@ export function tarefaConcluidaDentroDoPeriodoCalendario(tarefa, dataLimite) {
   return Boolean(dataCheckout) && dataCheckout >= dataLimite;
 }
 
+export function obterTarefasDisponiveisPorData(tarefas, dataHoje, buscaApartamento = "") {
+  const dataLimite = obterDataLimiteCalendario(dataHoje);
+
+  return tarefas
+    .filter((tarefa) => {
+      const dataCheckout = obterDataCheckout(tarefa);
+
+      return (
+        tarefa.status !== "Concluida" &&
+        Boolean(dataCheckout) &&
+        dataCheckout >= dataLimite
+      );
+    })
+    .filter((tarefa) => tarefaCombinaComBusca(tarefa, buscaApartamento))
+    .sort(compararTarefasPorCheckout);
+}
+
 function obterMesInput(data) {
   const dataBase = data ? new Date(`${data}T00:00:00`) : new Date();
 
@@ -470,9 +487,14 @@ function Tarefas({
   const tarefasPrioritarias = tarefasPendentes.filter(
     (tarefa) => tarefa.prioridade,
   ).length;
-  const tarefasPendentesFiltradasPorPrestador =
+  const tarefasDisponiveisPorData = obterTarefasDisponiveisPorData(
+    tarefas,
+    dataHoje,
+    buscaApartamento,
+  );
+  const tarefasDisponiveisPorDataFiltradasPorPrestador =
     filtrarTarefasPorPrestadorVisual(
-      tarefasPendentes,
+      tarefasDisponiveisPorData,
       prestadorFiltroVisual,
       idsFuncionariosResponsaveis,
     );
@@ -488,15 +510,27 @@ function Tarefas({
   );
   const diasDoFiltroData = montarDiasDoMes(
     mesFiltroData,
-    tarefasPendentesFiltradasPorPrestador,
+    tarefasDisponiveisPorDataFiltradasPorPrestador,
   );
   const tarefasDaDataSelecionada = dataSelecionada
-    ? (dataAbertaPeloCalendario
-        ? tarefasCalendarioFiltradasPorPrestador
-        : tarefasPendentesFiltradasPorPrestador
-      ).filter((tarefa) => obterDataCheckout(tarefa) === dataSelecionada)
+    ? [
+        ...new Map(
+          [
+            ...(dataAbertaPeloCalendario
+              ? tarefasCalendarioFiltradasPorPrestador.filter(
+                  (tarefa) => obterDataCheckout(tarefa) === dataSelecionada,
+                )
+              : tarefasDisponiveisPorDataFiltradasPorPrestador.filter(
+                  (tarefa) => obterDataCheckout(tarefa) === dataSelecionada,
+                )),
+            ...tarefasDisponiveisPorDataFiltradasPorPrestador.filter(
+              (tarefa) => obterDataCheckout(tarefa) < dataSelecionada,
+            ),
+          ].map((tarefa) => [String(tarefa.id), tarefa]),
+        ).values(),
+      ].sort(compararTarefasPorCheckout)
     : [];
-  const tarefasDoPeriodoSelecionado = tarefasPendentesFiltradasPorPrestador.filter((tarefa) => {
+  const tarefasDoPeriodoSelecionado = tarefasDisponiveisPorDataFiltradasPorPrestador.filter((tarefa) => {
     const dataCheckout = obterDataCheckout(tarefa);
 
     if (!dataCheckout) {
@@ -527,7 +561,7 @@ function Tarefas({
       )
     : [];
   const tarefasFiltroDataVisiveis = dataSelecionada
-    ? tarefasDaDataSelecionada.filter((tarefa) => tarefa.status === "Pendente")
+    ? tarefasDaDataSelecionada.filter((tarefa) => tarefa.status !== "Concluida")
     : tarefasDoPeriodoSelecionado;
   const tituloPeriodoWhatsapp = dataSelecionada
     ? `de ${formatarDataCompleta(dataSelecionada)}`
