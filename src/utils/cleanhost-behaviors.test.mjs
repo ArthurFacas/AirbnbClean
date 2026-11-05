@@ -710,6 +710,79 @@ test("Por data disponibiliza pendencias dos ultimos 30 dias sem alterar checkout
   assert.equal(disponiveis.filter((tarefa) => tarefa.id === 1).length, 1);
 });
 
+test("Por data mantém pendências antigas na data original e seleção entre datas", () => {
+  const hoje = "2026-11-06";
+  const tarefas = [
+    { id: 4, checkout: "2026-11-02", status: "Pendente" },
+    { id: 40, checkout: "2026-11-02", status: "Concluida" },
+    { id: 6, checkout: hoje, status: "Pendente" },
+    { id: 60, checkout: hoje, status: "Pendente" },
+    { id: 61, checkout: hoje, status: "Pendente" },
+    { id: 20, checkout: "2026-10-17", status: "Pendente" },
+    { id: 30, checkout: "2026-10-07", status: "Pendente" },
+    { id: 31, checkout: "2026-10-06", status: "Pendente" },
+  ];
+  const datasOriginais = tarefas.map((tarefa) => tarefa.checkout);
+  const disponiveis = tarefasModule.obterTarefasDisponiveisPorData(
+    tarefas,
+    hoje,
+  );
+  const calendario = tarefasModule.obterTarefasCalendario(tarefas, hoje);
+  const tarefasDia4 = tarefasModule.obterTarefasDaDataSelecionada(
+    "2026-11-02",
+    disponiveis,
+    calendario,
+    true,
+  );
+  const tarefasDia6 = tarefasModule.obterTarefasDaDataSelecionada(
+    hoje,
+    disponiveis,
+    calendario,
+  );
+
+  assert.deepEqual(tarefasDia4.map((tarefa) => tarefa.id), [4, 40]);
+  assert.deepEqual(tarefasDia6.map((tarefa) => tarefa.id), [6, 60, 61]);
+  assert.equal(
+    tarefasDia4.some((tarefa) => tarefa.checkout === hoje),
+    false,
+  );
+  assert.equal(
+    tarefasDia6.some((tarefa) => tarefa.checkout === "2026-11-02"),
+    false,
+  );
+  assert.deepEqual(
+    disponiveis.map((tarefa) => tarefa.id),
+    [30, 20, 4, 6, 60, 61],
+  );
+  assert.equal(disponiveis.some((tarefa) => tarefa.id === 20), true);
+  assert.equal(disponiveis.some((tarefa) => tarefa.id === 30), true);
+  assert.equal(disponiveis.some((tarefa) => tarefa.id === 31), false);
+  assert.equal(
+    tarefasDia4.find((tarefa) => tarefa.id === 4).checkout,
+    "2026-11-02",
+  );
+  assert.equal(tarefasDia4.filter((tarefa) => tarefa.id === 4).length, 1);
+  assert.deepEqual(
+    tarefas.map((tarefa) => tarefa.checkout),
+    datasOriginais,
+  );
+
+  const selecionadasManualmente = tarefasModule.obterTarefasSelecionadasPorData(
+    disponiveis,
+    [4, 60, 61],
+  );
+  const enviadas = tarefasModule.obterTarefasWhatsappVisiveis(
+    tarefasDia6.filter((tarefa) => tarefa.status !== "Concluida"),
+    selecionadasManualmente,
+  );
+
+  assert.deepEqual(enviadas.map((tarefa) => tarefa.id), [4, 60, 61]);
+  assert.equal(enviadas.length, 3);
+  assert.equal(enviadas.some((tarefa) => tarefa.id === 6), false);
+  assert.equal(enviadas.some((tarefa) => tarefa.id === 40), false);
+  assert.equal(enviadas.some((tarefa) => tarefa.id === 31), false);
+});
+
 test("WhatsApp da visao Por data inclui somente as pendencias antigas e futuras selecionadas", () => {
   const hoje = new Date();
   const data = (deslocamento) => {

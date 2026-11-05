@@ -137,6 +137,45 @@ export function obterTarefasDisponiveisPorData(tarefas, dataHoje, buscaApartamen
     .sort(compararTarefasPorCheckout);
 }
 
+export function obterTarefasDaDataSelecionada(
+  dataSelecionada,
+  tarefasPendentesDisponiveis,
+  tarefasCalendario = [],
+  incluirConcluidas = false,
+) {
+  if (!dataSelecionada) {
+    return [];
+  }
+
+  const tarefasPendentesDaData = tarefasPendentesDisponiveis.filter(
+    (tarefa) =>
+      tarefa.status !== "Concluida" &&
+      obterDataCheckout(tarefa) === dataSelecionada,
+  );
+  const tarefasConcluidasDaData = incluirConcluidas
+    ? tarefasCalendario.filter(
+        (tarefa) =>
+          tarefa.status === "Concluida" &&
+          obterDataCheckout(tarefa) === dataSelecionada,
+      )
+    : [];
+
+  return [
+    ...new Map(
+      [...tarefasPendentesDaData, ...tarefasConcluidasDaData].map((tarefa) => [
+        String(tarefa.id),
+        tarefa,
+      ]),
+    ).values(),
+  ].sort(compararTarefasPorCheckout);
+}
+
+export function obterTarefasSelecionadasPorData(tarefas, idsSelecionados) {
+  const ids = new Set(idsSelecionados.map(String));
+
+  return tarefas.filter((tarefa) => ids.has(String(tarefa.id)));
+}
+
 function obterMesInput(data) {
   const dataBase = data ? new Date(`${data}T00:00:00`) : new Date();
 
@@ -512,24 +551,12 @@ function Tarefas({
     mesFiltroData,
     tarefasDisponiveisPorDataFiltradasPorPrestador,
   );
-  const tarefasDaDataSelecionada = dataSelecionada
-    ? [
-        ...new Map(
-          [
-            ...(dataAbertaPeloCalendario
-              ? tarefasCalendarioFiltradasPorPrestador.filter(
-                  (tarefa) => obterDataCheckout(tarefa) === dataSelecionada,
-                )
-              : tarefasDisponiveisPorDataFiltradasPorPrestador.filter(
-                  (tarefa) => obterDataCheckout(tarefa) === dataSelecionada,
-                )),
-            ...tarefasDisponiveisPorDataFiltradasPorPrestador.filter(
-              (tarefa) => obterDataCheckout(tarefa) < dataSelecionada,
-            ),
-          ].map((tarefa) => [String(tarefa.id), tarefa]),
-        ).values(),
-      ].sort(compararTarefasPorCheckout)
-    : [];
+  const tarefasDaDataSelecionada = obterTarefasDaDataSelecionada(
+    dataSelecionada,
+    tarefasDisponiveisPorDataFiltradasPorPrestador,
+    tarefasCalendarioFiltradasPorPrestador,
+    dataAbertaPeloCalendario,
+  );
   const tarefasDoPeriodoSelecionado = tarefasDisponiveisPorDataFiltradasPorPrestador.filter((tarefa) => {
     const dataCheckout = obterDataCheckout(tarefa);
 
@@ -561,7 +588,9 @@ function Tarefas({
       )
     : [];
   const tarefasFiltroDataVisiveis = dataSelecionada
-    ? tarefasDaDataSelecionada.filter((tarefa) => tarefa.status !== "Concluida")
+    ? tarefasDaDataSelecionada.filter(
+        (tarefa) => tarefa.status !== "Concluida",
+      )
     : tarefasDoPeriodoSelecionado;
   const tituloPeriodoWhatsapp = dataSelecionada
     ? `de ${formatarDataCompleta(dataSelecionada)}`
@@ -622,15 +651,19 @@ function Tarefas({
   const tarefasSelecionadasVisiveisObjetos = tarefasSelecionadasVisiveis
     .map((id) => tarefasPendentesVisiveisPorId.get(String(id)))
     .filter(Boolean);
+  const tarefasSelecionadasPorData = obterTarefasSelecionadasPorData(
+    tarefasDisponiveisPorDataFiltradasPorPrestador,
+    tarefasSelecionadas,
+  );
   const tarefasWhatsappFiltroData = obterTarefasWhatsappVisiveis(
     tarefasFiltroDataVisiveis,
-    tarefasSelecionadasVisiveisObjetos,
+    tarefasSelecionadasPorData,
   );
-  const linkWhatsappFiltroData = tarefasSelecionadasVisiveisObjetos.length
+  const linkWhatsappFiltroData = tarefasSelecionadasPorData.length
     ? montarLinkWhatsapp(tarefasWhatsappFiltroData)
     : "";
   const rotuloEnvioWhatsapp = obterRotuloEnvioWhatsapp(
-    tarefasSelecionadasVisiveisObjetos,
+    tarefasSelecionadasPorData,
   );
   const todasTarefasVisiveisSelecionadas =
     idsTarefasVisiveis.length > 0 &&
@@ -1151,11 +1184,12 @@ function Tarefas({
 
           {dataSelecionada || dataInicioPeriodo ? (
             (dataSelecionada
-              ? tarefasDaDataSelecionada
-              : tarefasDoPeriodoSelecionado
-            ).length ? (
+              ? tarefasDaDataSelecionada.length > 0 ||
+                tarefasSelecionadasPorData.length > 0
+              : tarefasDoPeriodoSelecionado.length > 0) ? (
               <>
-                {tarefasFiltroDataVisiveis.length > 0 && (
+                {(tarefasFiltroDataVisiveis.length > 0 ||
+                  tarefasSelecionadasPorData.length > 0) && (
                   <div className="date-whatsapp-panel">
                     <div className="whatsapp-task-box compact">
                       <div>
@@ -1183,10 +1217,7 @@ function Tarefas({
                 )}
 
                 <div className="list-grid">
-                  {(dataSelecionada
-                    ? tarefasDaDataSelecionada
-                    : tarefasDoPeriodoSelecionado
-                  ).map((tarefa) =>
+                  {(dataSelecionada ? tarefasDaDataSelecionada : tarefasDoPeriodoSelecionado).map((tarefa) =>
                     tarefa.status === "Concluida" ? (
                       <div
                         className="info-card task-card completed"
