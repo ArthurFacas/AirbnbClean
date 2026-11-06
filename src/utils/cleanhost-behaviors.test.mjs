@@ -1008,6 +1008,167 @@ test("WhatsApp com filtro por prestador envia somente selecionadas visiveis", ()
   assert.doesNotMatch(mensagem, /Clean Host - 105/);
 });
 
+test("enviar no WhatsApp usa 4 tarefas da Debora e limpa antes da selecao do Victor", () => {
+  const tarefas = [
+    ...Array.from({ length: 4 }, (_, indice) => ({
+      id: `debora-${indice + 1}`,
+      status: "Pendente",
+      funcionarioId: "501",
+      apartamento: String(201 + indice),
+      predioApartamento: "Clean Host",
+      checkout: "2026-09-04",
+    })),
+    {
+      id: "victor-1",
+      status: "Pendente",
+      funcionarioId: "502",
+      apartamento: "301",
+      predioApartamento: "Clean Host",
+      checkout: "2026-09-06",
+    },
+  ];
+  const idsDebora = tarefas.slice(0, 4).map((tarefa) => String(tarefa.id));
+  let selecao = tarefasModule.alternarSelecaoTarefasVisiveis(
+    [],
+    idsDebora,
+    false,
+  );
+
+  assert.equal(selecao.length, 4);
+  const tarefasWhatsappDebora = tarefasModule.obterTarefasSelecionadasPorData(
+    tarefas,
+    selecao,
+  );
+  const mensagemDebora =
+    tarefasModule.montarMensagemWhatsappTarefas(tarefasWhatsappDebora);
+  assert.equal(mensagemDebora.match(/\d+\. \*/g)?.length, 4);
+
+  let disparoDoLinkConcluido;
+  tarefasModule.agendarLimpezaSelecaoAposDisparoWhatsapp(
+    () => {
+      selecao = tarefasModule.limparSelecaoTarefas();
+    },
+    (callback, atraso) => {
+      assert.equal(atraso, 0);
+      disparoDoLinkConcluido = callback;
+    },
+  );
+  assert.equal(selecao.length, 4);
+  disparoDoLinkConcluido();
+  assert.equal(selecao.length, 0);
+
+  const tarefasVictor = tarefasModule.filtrarTarefasPorPrestadorVisual(
+    tarefas,
+    "502",
+    new Set(["501", "502"]),
+  );
+  const selecaoVictor = tarefasModule.alternarSelecaoTarefasVisiveis(
+    selecao,
+    tarefasVictor.map((tarefa) => String(tarefa.id)),
+    false,
+  );
+  const tarefasWhatsapp = tarefasModule.obterTarefasWhatsappVisiveis(
+    tarefasVictor,
+    tarefasModule.obterTarefasSelecionadasPorData(tarefasVictor, selecaoVictor),
+  );
+  const mensagem = tarefasModule.montarMensagemWhatsappTarefas(tarefasWhatsapp);
+
+  assert.equal(selecaoVictor.length, 1);
+  assert.deepEqual(tarefasWhatsapp.map((tarefa) => tarefa.id), ["victor-1"]);
+  assert.equal(mensagem.match(/\d+\. \*/g)?.length, 1);
+  assert.match(mensagem, /Clean Host - 301/);
+  assert.doesNotMatch(mensagem, /Clean Host - 20[1-4]/);
+});
+
+test("desmarcar todos os visiveis preserva selecoes de outras datas e limpar zera tudo", () => {
+  const selecaoDia4 = tarefasModule.alternarSelecaoTarefasVisiveis(
+    [],
+    ["debora-1"],
+    false,
+  );
+  const selecaoDia6 = tarefasModule.alternarSelecaoTarefasVisiveis(
+    selecaoDia4,
+    ["victor-1", "victor-2"],
+    false,
+  );
+  const aposDesmarcarVisiveis = tarefasModule.alternarSelecaoTarefasVisiveis(
+    selecaoDia6,
+    ["victor-1", "victor-2"],
+    true,
+  );
+
+  assert.deepEqual(selecaoDia6, ["debora-1", "victor-1", "victor-2"]);
+  assert.deepEqual(aposDesmarcarVisiveis, ["debora-1"]);
+  assert.equal(tarefasModule.limparSelecaoTarefas().length, 0);
+  assert.deepEqual(
+    tarefasModule.limparSelecaoTarefas(),
+    [],
+  );
+});
+
+test("WhatsApp da visao Por data envia selecoes de todos os dias sem limpar", () => {
+  const tarefas = [
+    {
+      id: "101",
+      apartamento: "101",
+      predioApartamento: "Clean Host",
+      checkout: "2026-09-04",
+      status: "Pendente",
+    },
+    ...["202", "203"].map((apartamento, indice) => ({
+      id: apartamento,
+      apartamento,
+      predioApartamento: "Clean Host",
+      checkout: `2026-09-0${6 + indice}`,
+      status: "Pendente",
+    })),
+  ];
+  const selecaoDia4 = tarefasModule.alternarSelecaoTarefasVisiveis(
+    [],
+    ["101"],
+    false,
+  );
+  const selecaoGlobal = tarefasModule.alternarSelecaoTarefasVisiveis(
+    selecaoDia4,
+    ["202", "203"],
+    false,
+  );
+  const tarefasSelecionadas = tarefasModule.obterTarefasSelecionadasPorData(
+    tarefas,
+    selecaoGlobal,
+  );
+  const tarefasWhatsapp = tarefasModule.obterTarefasWhatsappVisiveis(
+    [tarefas[1], tarefas[2]],
+    tarefasSelecionadas,
+  );
+  const mensagem = tarefasModule.montarMensagemWhatsappTarefas(tarefasWhatsapp);
+
+  assert.deepEqual(tarefasWhatsapp.map((tarefa) => tarefa.apartamento), [
+    "101",
+    "202",
+    "203",
+  ]);
+  assert.equal(mensagem.match(/\d+\. \*/g)?.length, 3);
+  assert.match(mensagem, /Clean Host - 101/);
+  assert.match(mensagem, /Clean Host - 202/);
+  assert.match(mensagem, /Clean Host - 203/);
+
+  let selecaoAposDisparo = selecaoGlobal;
+  let callbackLimpeza;
+  tarefasModule.agendarLimpezaSelecaoAposDisparoWhatsapp(
+    () => {
+      selecaoAposDisparo = tarefasModule.limparSelecaoTarefas();
+    },
+    (callback, atraso) => {
+      assert.equal(atraso, 0);
+      callbackLimpeza = callback;
+    },
+  );
+  assert.equal(selecaoAposDisparo.length, 3);
+  callbackLimpeza();
+  assert.equal(selecaoAposDisparo.length, 0);
+});
+
 test("portal do prestador mostra pendentes antigas do responsavel na data original", () => {
   const tarefas = [
     {

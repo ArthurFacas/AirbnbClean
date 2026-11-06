@@ -176,6 +176,31 @@ export function obterTarefasSelecionadasPorData(tarefas, idsSelecionados) {
   return tarefas.filter((tarefa) => ids.has(String(tarefa.id)));
 }
 
+export function alternarSelecaoTarefasVisiveis(
+  idsSelecionados,
+  idsVisiveis,
+  todasVisiveisSelecionadas,
+) {
+  if (todasVisiveisSelecionadas) {
+    const idsVisiveisSet = new Set(idsVisiveis.map(String));
+
+    return idsSelecionados.filter((id) => !idsVisiveisSet.has(String(id)));
+  }
+
+  return [...new Set([...idsSelecionados, ...idsVisiveis].map(String))];
+}
+
+export function limparSelecaoTarefas() {
+  return [];
+}
+
+export function agendarLimpezaSelecaoAposDisparoWhatsapp(
+  limparSelecao,
+  agendar = globalThis.setTimeout,
+) {
+  agendar(limparSelecao, 0);
+}
+
 function obterMesInput(data) {
   const dataBase = data ? new Date(`${data}T00:00:00`) : new Date();
 
@@ -765,13 +790,21 @@ function Tarefas({
   }
 
   function alternarTodasTarefasVisiveis() {
-    setTarefasSelecionadas((idsAtuais) => {
-      if (todasTarefasVisiveisSelecionadas) {
-        return idsAtuais.filter((id) => !idsTarefasVisiveis.includes(id));
-      }
+    setTarefasSelecionadas((idsAtuais) =>
+      alternarSelecaoTarefasVisiveis(
+        idsAtuais,
+        idsTarefasVisiveis,
+        todasTarefasVisiveisSelecionadas,
+      ),
+    );
+  }
 
-      return [...new Set([...idsAtuais, ...idsTarefasVisiveis])];
-    });
+  function limparTarefasSelecionadas() {
+    setTarefasSelecionadas(limparSelecaoTarefas());
+  }
+
+  function limparSelecaoAposDisparoWhatsapp() {
+    agendarLimpezaSelecaoAposDisparoWhatsapp(limparTarefasSelecionadas);
   }
 
   function aplicarAtribuicaoTarefasMassa() {
@@ -915,17 +948,28 @@ function Tarefas({
         </div>
       </div>
 
-      {idsTarefasVisiveis.length > 0 && (
+      {(idsTarefasVisiveis.length > 0 || tarefasSelecionadas.length > 0) && (
         <div className="bulk-actions-bar">
-          <label className="bulk-select-control">
-            <input
-              type="checkbox"
-              checked={todasTarefasVisiveisSelecionadas}
-              onChange={alternarTodasTarefasVisiveis}
-            />
-            <span>Selecionar visiveis</span>
-          </label>
-          <strong>{tarefasSelecionadasVisiveis.length} selecionada(s)</strong>
+          {idsTarefasVisiveis.length > 0 && (
+            <label className="bulk-select-control">
+              <input
+                type="checkbox"
+                checked={todasTarefasVisiveisSelecionadas}
+                onChange={alternarTodasTarefasVisiveis}
+              />
+              <span>Selecionar visiveis</span>
+            </label>
+          )}
+          <strong>{tarefasSelecionadas.length} selecionada(s)</strong>
+          {tarefasSelecionadas.length > 0 && (
+            <button
+              className="secondary-action"
+              type="button"
+              onClick={limparTarefasSelecionadas}
+            >
+              Limpar seleção
+            </button>
+          )}
           <select
             value={prestadorMassa}
             onChange={(event) => setPrestadorMassa(event.target.value)}
@@ -1204,6 +1248,7 @@ function Tarefas({
                           href={linkWhatsappFiltroData}
                           target="_blank"
                           rel="noopener noreferrer"
+                          onClick={limparSelecaoAposDisparoWhatsapp}
                         >
                           {rotuloEnvioWhatsapp}
                         </a>
@@ -1343,6 +1388,7 @@ function Tarefas({
                         href={linkWhatsapp}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={limparSelecaoAposDisparoWhatsapp}
                       >
                         {rotuloWhatsappFuncionario}
                       </a>
